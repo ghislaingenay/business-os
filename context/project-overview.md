@@ -556,19 +556,15 @@ def get_storage_provider(config: dict) -> StorageProvider:
         return GCSProvider(config["bucket"])
     # ... other providers
 
+
 # Service layer receives injected dependencies
 class UploadService:
-    def __init__(
-        self,
-        storage: StorageProvider,
-        redis: Redis,
-        db: Database,
-        worker: WorkerQueue
-    ):
+    def __init__(self, storage: StorageProvider, redis: Redis, db: Database, worker: WorkerQueue):
         self.storage = storage
         self.redis = redis
         self.db = db
         self.worker = worker
+
 
 # FastAPI dependency injection
 def get_upload_service() -> UploadService:
@@ -576,7 +572,7 @@ def get_upload_service() -> UploadService:
         storage=get_storage_provider(config),
         redis=get_redis_client(config),
         db=get_database(config),
-        worker=get_worker_queue(config)
+        worker=get_worker_queue(config),
     )
 ```
 

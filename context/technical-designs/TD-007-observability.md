@@ -54,7 +54,7 @@ structlog.configure(
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.JSONRenderer()
+        structlog.processors.JSONRenderer(),
     ],
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
     context_class=dict,
@@ -70,6 +70,7 @@ logger = structlog.get_logger()
 from fastapi import Request
 import uuid
 import structlog
+
 
 class RequestIDMiddleware:
     async def __call__(self, request: Request, call_next):
@@ -91,19 +92,18 @@ def log_dedup_check(result: str, hash: str, latency_ms: int):
         event="dedup_check",
         result=result,  # "hit" | "miss"
         hash=hash[:16],  # Truncated for logs
-        latency_ms=latency_ms
+        latency_ms=latency_ms,
     )
 
-def log_upload_complete(
-    file_id: str, size: int, strategy: str, duration_ms: int
-):
+
+def log_upload_complete(file_id: str, size: int, strategy: str, duration_ms: int):
     logger.info(
         "upload_complete",
         event="upload_complete",
         file_id=file_id,
         size=size,
         strategy=strategy,  # "mediated" | "presigned"
-        duration_ms=duration_ms
+        duration_ms=duration_ms,
     )
 ```
 
@@ -120,7 +120,7 @@ except Exception as e:
         file_id=file_id,
         user_id=user_id,
         operation="upload",
-        exc_info=True  # Includes stack trace
+        exc_info=True,  # Includes stack trace
     )
     raise
 ```

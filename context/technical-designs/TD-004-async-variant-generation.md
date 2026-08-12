@@ -102,7 +102,9 @@ async def generate_variants(ctx, file_id: str, storage_key: str):
     # Update metadata
     await db.execute(
         "UPDATE files SET webp_url=?, thumbnail_url=?, variants_processed_at=NOW() WHERE file_id=?",
-        webp_key, thumb_key, file_id
+        webp_key,
+        thumb_key,
+        file_id,
     )
 ```
 
