@@ -18,11 +18,12 @@ echo -e "${YELLOW}Checking Python version...${NC}"
 if command -v python3.11 >/dev/null 2>&1; then
     PYTHON_CMD=python3.11
 elif command -v python3 >/dev/null 2>&1; then
-    PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
-    if [ "$(echo "$PYTHON_VERSION >= 3.11" | bc -l)" -eq 1 ]; then
+    PYTHON_MAJOR=$(python3 -c 'import sys; print(sys.version_info.major)')
+    PYTHON_MINOR=$(python3 -c 'import sys; print(sys.version_info.minor)')
+    if [ "$PYTHON_MAJOR" -gt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 11 ]; }; then
         PYTHON_CMD=python3
     else
-        echo -e "${RED}Error: Python 3.11+ is required (found $PYTHON_VERSION)${NC}"
+        echo -e "${RED}Error: Python 3.11+ is required (found ${PYTHON_MAJOR}.${PYTHON_MINOR})${NC}"
         exit 1
     fi
 else

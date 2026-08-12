@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint format type-check pre-commit clean run migrate
+.PHONY: help install install-uv dev test test-cov lint lint-fix format type-check pre-commit clean run migrate migration check
 
 # Default target
 help:
