@@ -1,11 +1,11 @@
-# TD-003: Storage Provider Abstraction
+# TD-001: Storage Provider Abstraction
 
 Status: Not Started
 Owner: TBD
 Created: 2026-08-11
 Last Updated: 2026-08-11
 
-Feature Spec: [FEAT-003 - Storage Provider Abstraction](../features/FEAT-003-storage-provider-abstraction.md)
+Feature Spec: [FEAT-001 - Storage Provider Abstraction](../features/FEAT-001-storage-provider-abstraction.md)
 
 ---
 

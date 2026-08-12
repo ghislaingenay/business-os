@@ -13,7 +13,7 @@ Technical Design: [TD-005 - Multipart Upload Support](../technical-designs/TD-00
 
 ## Summary
 
-Extend large file upload (FEAT-001) with multipart upload capability for files >100MB, enabling resilient uploads via chunked transfer, part-level retry, and pause/resume functionality. Leverages storage provider's native multipart APIs (S3 Multipart Upload, GCS Resumable Upload).
+Extend large file upload (FEAT-002) with multipart upload capability for files >100MB, enabling resilient uploads via chunked transfer, part-level retry, and pause/resume functionality. Leverages storage provider's native multipart APIs (S3 Multipart Upload, GCS Resumable Upload).
 
 ## Problem
 
@@ -144,9 +144,9 @@ So that **I know the upload is progressing and can estimate completion time**
 
 # 6. Dependencies
 
-- Depends on: **FEAT-001** (Hybrid Upload) — extends large file path with multipart
-- Depends on: **FEAT-003** (Storage Provider) — uses provider's multipart APIs
-- Related: **FEAT-002** (Deduplication) — hash calculated after all parts uploaded
+- Depends on: **FEAT-002** (Hybrid Upload) — extends large file path with multipart
+- Depends on: **FEAT-001** (Storage Provider) — uses provider's multipart APIs
+- Related: **FEAT-003** (Deduplication) — hash calculated after all parts uploaded
 
 ---
 

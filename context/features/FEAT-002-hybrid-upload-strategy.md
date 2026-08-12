@@ -1,11 +1,11 @@
-# FEAT-001: Hybrid Upload Strategy
+# FEAT-002: Hybrid Upload Strategy
 
 Status: Not Started
 Owner: TBD
 Created: 2026-08-11
 Last Updated: 2026-08-11
 
-Technical Design: [TD-001 - Hybrid Upload Strategy](../technical-designs/TD-001-hybrid-upload-strategy.md)
+Technical Design: [TD-002 - Hybrid Upload Strategy](../technical-designs/TD-002-hybrid-upload-strategy.md)
 
 ---
 
@@ -160,8 +160,8 @@ So that **I can publish video content without overwhelming the API server**
 
 # 6. Dependencies
 
-- Depends on: **FEAT-003** (Storage Provider Abstraction) — requires storage adapter interface for upload operations
-- Blocks: **FEAT-002** (Content Deduplication) — dedup logic hooks into upload flow
+- Depends on: **FEAT-001** (Storage Provider Abstraction) — requires storage adapter interface for upload operations
+- Blocks: **FEAT-003** (Content Deduplication) — dedup logic hooks into upload flow
 - Blocks: **FEAT-005** (Multipart Upload Support) — extends large file path with chunking
 - Related: **FEAT-006** (Rate Limiting) — rate limits apply to initiate/finalize calls
 
@@ -173,7 +173,7 @@ So that **I can publish video content without overwhelming the API server**
 
 **Rationale**: Feature spans data models, two distinct upload flows, and API design. Splitting by capability allows incremental review and testing without blocking dependent features.
 
-### PR1: [FEAT-001a] - Upload Foundation
+### PR1: [FEAT-002a] - Upload Foundation
 
 **Scope**: Database schema, file metadata models, validation utilities
 
@@ -189,7 +189,7 @@ So that **I can publish video content without overwhelming the API server**
 
 **Merge Requirements**: All tests pass, migration tested locally
 
-### PR2: [FEAT-001b] - Small File Upload (Mediated)
+### PR2: [FEAT-002b] - Small File Upload (Mediated)
 
 **Scope**: `POST /upload` endpoint with backend-mediated upload flow
 
@@ -199,7 +199,7 @@ So that **I can publish video content without overwhelming the API server**
 
 - [ ] `POST /upload` FastAPI endpoint (multipart/form-data handler)
 - [ ] `UploadService.upload_small_file()` method
-- [ ] Integration with storage provider (via FEAT-003 interface)
+- [ ] Integration with storage provider (via FEAT-001 interface)
 - [ ] File metadata persistence to database
 - [ ] Error handling (size exceeded, invalid type, storage failure)
 - [ ] Unit tests + integration tests (with MinIO)
@@ -209,7 +209,7 @@ So that **I can publish video content without overwhelming the API server**
 
 **Merge Requirements**: Integration tests pass with MinIO, OpenAPI validated
 
-### PR3: [FEAT-001c] - Large File Upload (Presigned URLs)
+### PR3: [FEAT-002c] - Large File Upload (Presigned URLs)
 
 **Scope**: `POST /upload/initiate` and `POST /upload/finalize` endpoints
 

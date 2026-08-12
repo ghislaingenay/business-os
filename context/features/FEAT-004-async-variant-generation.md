@@ -135,8 +135,8 @@ So that **the gallery page loads in <1 second even with 100 images**
 
 # 6. Dependencies
 
-- Depends on: **FEAT-001** (Hybrid Upload) — variants generated after upload completes
-- Depends on: **FEAT-003** (Storage Provider) — workers upload variants to storage
+- Depends on: **FEAT-002** (Hybrid Upload) — variants generated after upload completes
+- Depends on: **FEAT-001** (Storage Provider) — workers upload variants to storage
 - Related: **FEAT-007** (Observability) — log variant generation metrics
 
 ---

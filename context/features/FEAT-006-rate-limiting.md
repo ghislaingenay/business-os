@@ -144,7 +144,7 @@ So that **I know exactly when I can retry my request**
 
 - Depends on: None (uses existing Redis infrastructure)
 - Blocks: None (can be deployed independently)
-- Related: **FEAT-002** (Deduplication) — uses same Redis connection pool
+- Related: **FEAT-003** (Deduplication) — uses same Redis connection pool
 
 ---
 
