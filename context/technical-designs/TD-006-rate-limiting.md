@@ -80,6 +80,7 @@ end
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
 
+
 class RateLimitMiddleware:
     async def __call__(self, request: Request, call_next):
         user_id = extract_user_id(request)  # From JWT
@@ -87,14 +88,12 @@ class RateLimitMiddleware:
 
         # Check minute window
         allowed_min, remaining_min, retry_min = await check_rate_limit(
-            f"ratelimit:{operation}:minute:{user_id}",
-            window=60, limit=10
+            f"ratelimit:{operation}:minute:{user_id}", window=60, limit=10
         )
 
         # Check hour window
         allowed_hour, remaining_hour, retry_hour = await check_rate_limit(
-            f"ratelimit:{operation}:hour:{user_id}",
-            window=3600, limit=100
+            f"ratelimit:{operation}:hour:{user_id}", window=3600, limit=100
         )
 
         if not (allowed_min and allowed_hour):
@@ -104,13 +103,13 @@ class RateLimitMiddleware:
                 headers={
                     "Retry-After": str(retry_after),
                     "X-RateLimit-Limit": "10",
-                    "X-RateLimit-Remaining": "0"
+                    "X-RateLimit-Remaining": "0",
                 },
                 content={
                     "error": "rate_limit_exceeded",
                     "message": f"Rate limit exceeded. Retry after {retry_after} seconds.",
-                    "retry_after": retry_after
-                }
+                    "retry_after": retry_after,
+                },
             )
 
         # Add rate limit headers to response

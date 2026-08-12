@@ -1,10 +1,9 @@
-.PHONY: help install install-uv dev test lint format type-check pre-commit clean run migrate
+.PHONY: help install dev test lint format type-check pre-commit clean run migrate
 
 # Default target
 help:
 	@echo "Available commands:"
-	@echo "  make install        - Install dependencies using pip"
-	@echo "  make install-uv     - Install dependencies using uv (faster)"
+	@echo "  make install        - Install dependencies using uv (required)"
 	@echo "  make dev            - Set up development environment"
 	@echo "  make test           - Run tests"
 	@echo "  make test-cov       - Run tests with coverage"
@@ -16,25 +15,14 @@ help:
 	@echo "  make run            - Run the FastAPI application"
 	@echo "  make migrate        - Run database migrations"
 
-# Install dependencies using pip
+# Install dependencies using uv (required)
 install:
-	pip install -e ".[dev]"
-
-# Install dependencies using uv (recommended - much faster)
-install-uv:
 	uv pip install -e ".[dev]"
 
-# Set up development environment
+# Set up development environment (requires uv)
 dev:
 	@echo "Setting up development environment..."
-	@if command -v uv >/dev/null 2>&1; then \
-		echo "Using uv (fast installer)..."; \
-		uv pip install -e ".[dev]"; \
-	else \
-		echo "uv not found, using pip..."; \
-		echo "Tip: Install uv for 10-100x faster installation: curl -LsSf https://astral.sh/uv/install.sh | sh"; \
-		pip install -e ".[dev]"; \
-	fi
+	uv pip install -e ".[dev]"
 	pre-commit install
 	@echo ""
 	@echo "Development environment ready!"

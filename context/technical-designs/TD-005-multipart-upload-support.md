@@ -201,9 +201,7 @@ class StorageProvider(ABC):
         pass
 
     @abstractmethod
-    async def complete_multipart_upload(
-        self, key: str, upload_id: str, parts: List[Dict]
-    ) -> str:
+    async def complete_multipart_upload(self, key: str, upload_id: str, parts: List[Dict]) -> str:
         """Returns final storage_key"""
         pass
 
@@ -223,14 +221,8 @@ async def cleanup_abandoned_multipart_sessions(ctx):
     )
 
     for session in sessions:
-        await storage.abort_multipart_upload(
-            session["storage_key"],
-            session["storage_upload_id"]
-        )
-        await db.execute(
-            "DELETE FROM multipart_sessions WHERE upload_id = ?",
-            session["upload_id"]
-        )
+        await storage.abort_multipart_upload(session["storage_key"], session["storage_upload_id"])
+        await db.execute("DELETE FROM multipart_sessions WHERE upload_id = ?", session["upload_id"])
 
     logger.info(f"Cleaned up {len(sessions)} abandoned multipart sessions")
 ```

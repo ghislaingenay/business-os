@@ -36,6 +36,7 @@ Adapter pattern implementation for storage backends with abstract interface, AWS
 from abc import ABC, abstractmethod
 from typing import BinaryIO, Dict, Literal
 
+
 class StorageProvider(ABC):
     @abstractmethod
     async def upload(self, key: str, stream: BinaryIO, metadata: Dict[str, str]) -> str:

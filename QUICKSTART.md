@@ -11,15 +11,17 @@ Get up and running in less than 2 minutes!
 This script will:
 
 - ✓ Check Python version
-- ✓ Offer to install uv (10-100x faster than pip)
+- ✓ Auto-install uv if not present (required - 10-100x faster than pip)
 - ✓ Create virtual environment
 - ✓ Install all dependencies
 - ✓ Set up pre-commit hooks
 - ✓ Create .env file
 
+**Note:** The script requires uv and will automatically install it if not found. No pip fallback - we enforce fast installs!
+
 ## Manual Setup (3 Steps)
 
-### 1. Install uv (Recommended)
+### 1. Install uv (Required)
 
 **Linux/macOS:**
 
@@ -40,7 +42,7 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 uv venv --python 3.11
 source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 
-# Install dependencies (10-100x faster with uv!)
+# Install dependencies
 uv pip install -e ".[dev]"
 ```
 

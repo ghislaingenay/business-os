@@ -12,9 +12,9 @@ FastAPI backend with strict domain-driven design, using Python 3.11+, Pydantic v
 
 ## Setup
 
-### 1. Install uv (Recommended)
+### 1. Install uv (Required)
 
-[uv](https://github.com/astral-sh/uv) is an extremely fast Python package installer and resolver, written in Rust.
+[uv](https://github.com/astral-sh/uv) is an extremely fast Python package installer and resolver, written in Rust. **This project requires uv**
 
 **Linux/macOS:**
 
@@ -293,7 +293,3 @@ docker-compose down
 # View logs
 docker-compose logs -f
 ```
-
-## License
-
-[Add your license here]

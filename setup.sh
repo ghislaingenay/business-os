@@ -32,32 +32,34 @@ fi
 echo -e "${GREEN}✓ Python $(${PYTHON_CMD} --version | cut -d' ' -f2) found${NC}"
 echo ""
 
-# Check if uv is installed
+# Check if uv is installed, if not install it automatically (REQUIRED)
 echo -e "${YELLOW}Checking for uv...${NC}"
 if ! command -v uv >/dev/null 2>&1; then
-    echo -e "${YELLOW}uv not found. Would you like to install it? (recommended for 10-100x faster installation)${NC}"
-    echo -e "${YELLOW}Installation command: curl -LsSf https://astral.sh/uv/install.sh | sh${NC}"
-    read -p "Install uv? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${BLUE}Installing uv...${NC}"
-        curl -LsSf https://astral.sh/uv/install.sh | sh
+    echo -e "${YELLOW}uv not found. Installing uv (required for this project)...${NC}"
+    echo -e "${BLUE}Running: curl -LsSf https://astral.sh/uv/install.sh | sh${NC}"
+    echo ""
+
+    if curl -LsSf https://astral.sh/uv/install.sh | sh; then
         # Reload shell config to get uv in PATH
         export PATH="$HOME/.cargo/bin:$PATH"
+
         if command -v uv >/dev/null 2>&1; then
-            echo -e "${GREEN}✓ uv installed successfully${NC}"
-            USE_UV=true
+            echo -e "${GREEN}✓ uv $(uv --version) installed successfully${NC}"
         else
-            echo -e "${YELLOW}⚠ uv installation may require shell restart. Using pip for now.${NC}"
-            USE_UV=false
+            echo -e "${RED}Error: uv installation completed but uv command not found in PATH${NC}"
+            echo -e "${RED}Please restart your shell and run this script again, or manually add uv to PATH:${NC}"
+            echo -e "${YELLOW}  export PATH=\"\$HOME/.cargo/bin:\$PATH\"${NC}"
+            exit 1
         fi
     else
-        echo -e "${YELLOW}Skipping uv installation. Using pip.${NC}"
-        USE_UV=false
+        echo -e "${RED}Error: Failed to install uv${NC}"
+        echo -e "${RED}Please install uv manually:${NC}"
+        echo -e "${YELLOW}  curl -LsSf https://astral.sh/uv/install.sh | sh${NC}"
+        echo -e "${YELLOW}Or visit: https://github.com/astral-sh/uv${NC}"
+        exit 1
     fi
 else
     echo -e "${GREEN}✓ uv $(uv --version) found${NC}"
-    USE_UV=true
 fi
 echo ""
 
@@ -66,11 +68,7 @@ echo -e "${YELLOW}Creating virtual environment...${NC}"
 if [ -d ".venv" ]; then
     echo -e "${YELLOW}Virtual environment already exists. Skipping creation.${NC}"
 else
-    if [ "$USE_UV" = true ]; then
-        uv venv --python ${PYTHON_CMD}
-    else
-        ${PYTHON_CMD} -m venv .venv
-    fi
+    uv venv --python ${PYTHON_CMD}
     echo -e "${GREEN}✓ Virtual environment created${NC}"
 fi
 echo ""
@@ -82,14 +80,8 @@ echo -e "${GREEN}✓ Virtual environment activated${NC}"
 echo ""
 
 # Install dependencies
-echo -e "${YELLOW}Installing dependencies...${NC}"
-if [ "$USE_UV" = true ]; then
-    echo -e "${BLUE}Using uv (fast mode)...${NC}"
-    uv pip install -e ".[dev]"
-else
-    echo -e "${BLUE}Using pip...${NC}"
-    pip install -e ".[dev]"
-fi
+echo -e "${YELLOW}Installing dependencies with uv...${NC}"
+uv pip install -e ".[dev]"
 echo -e "${GREEN}✓ Dependencies installed${NC}"
 echo ""
 
