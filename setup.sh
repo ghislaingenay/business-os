@@ -43,8 +43,8 @@ if ! command -v uv >/dev/null 2>&1; then
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}Installing uv...${NC}"
         curl -LsSf https://astral.sh/uv/install.sh | sh
-        # Reload shell config to get uv in PATH
-        export PATH="$HOME/.cargo/bin:$PATH"
+        # Ensure common uv install locations are in PATH for this session
+        export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
         if command -v uv >/dev/null 2>&1; then
             echo -e "${GREEN}✓ uv installed successfully${NC}"
             USE_UV=true
