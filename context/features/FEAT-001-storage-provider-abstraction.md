@@ -1,11 +1,11 @@
-# FEAT-003: Storage Provider Abstraction
+# FEAT-001: Storage Provider Abstraction
 
 Status: Not Started
 Owner: TBD
 Created: 2026-08-11
 Last Updated: 2026-08-11
 
-Technical Design: [TD-003 - Storage Provider Abstraction](../technical-designs/TD-003-storage-provider-abstraction.md)
+Technical Design: [TD-001 - Storage Provider Abstraction](../technical-designs/TD-001-storage-provider-abstraction.md)
 
 ---
 
@@ -141,7 +141,7 @@ So that **I can meet data residency requirements**
 # 6. Dependencies
 
 - Depends on: None (foundational feature)
-- Blocks: **FEAT-001** (Hybrid Upload), **FEAT-002** (Deduplication) — both require storage interface
+- Blocks: **FEAT-002** (Hybrid Upload), **FEAT-003** (Deduplication) — both require storage interface
 - Related: **FEAT-004** (Variant Generation) — workers use storage interface
 
 ---
@@ -150,7 +150,7 @@ So that **I can meet data residency requirements**
 
 ## Multi-PR Implementation
 
-### PR1: [FEAT-003a] - Storage Interface and S3 Implementation
+### PR1: [FEAT-001a] - Storage Interface and S3 Implementation
 
 **Scope**: Abstract interface, AWS S3 provider, factory pattern
 
@@ -165,7 +165,7 @@ So that **I can meet data residency requirements**
 
 **Estimated Size**: ~8 files, ~500 LOC
 
-### PR2: [FEAT-003b] - GCS and Multi-Provider Support
+### PR2: [FEAT-001b] - GCS and Multi-Provider Support
 
 **Scope**: GCS implementation, configuration validation
 

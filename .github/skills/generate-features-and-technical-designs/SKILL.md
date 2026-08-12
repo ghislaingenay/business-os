@@ -56,6 +56,16 @@ ls -la context/features/
 ls -la context/technical-designs/
 ```
 
+### Dependency Ordering Rule (Mandatory)
+
+**A feature must never depend on a feature with a higher number.** FEAT-XXX/TD-XXX numbers must reflect a valid topological order of the dependency graph: if FEAT-B lists "Depends on: FEAT-A", then A's number must be lower than B's.
+
+- Before assigning numbers, build the dependency graph for all features (existing + new) and topologically sort it. Assign numbers in that sorted order.
+- Foundational features with no dependencies (e.g., shared abstractions/interfaces) should generally get the lowest numbers.
+- If a new feature must depend on a feature that doesn't exist yet (or on one with a higher number), do NOT create the forward reference — instead reorder/renumber so the dependency comes first, or split out the shared piece into its own lower-numbered feature.
+- If adding a feature reveals that existing numbering violates this rule (a lower-numbered feature depends on a higher-numbered one), renumber the offending FEAT/TD files (and update all cross-references, filenames, and the README index) so the order is dependency-consistent before proceeding. Only renumber files that are still `Not Started`/`In Progress` with no merged implementation; if a conflicting feature is already `Done`, flag it to the user instead of renumbering.
+- `Related:` references (non-blocking, informational) are exempt from this rule and may point either direction.
+
 ### Step 2: Determine Feature Boundaries and PR Strategy
 
 For each identified feature:
@@ -423,6 +433,7 @@ Ensure:
 - Dependencies between features are explicitly documented
 - PR decomposition is consistent between FEAT and TD
 - Feature numbers are sequential and don't conflict
+- No feature's "Depends on" lists a higher-numbered feature (see Dependency Ordering Rule in Step 1); renumber if this is found
 
 ### Step 7: Generate Implementation Guidance (Optional)
 
@@ -524,10 +535,11 @@ PR3: Feature B (using infrastructure)
 
 1. **Mega Features**: Don't create one feature that should be 3-4 separate features
 2. **Missing Dependencies**: Always document what must exist first
-3. **Vague Requirements**: "Should be fast" → "Must respond within 200ms at p95"
-4. **Copy-Paste**: Don't duplicate content between FEAT and TD; cross-reference
-5. **Monolithic PRs**: Don't create 2000-line PRs when it could be 4×500-line PRs
-6. **Premature Splitting**: Don't split a 300-LOC feature just to have multiple PRs
+3. **Forward Dependencies**: Never let a lower-numbered feature depend on a higher-numbered one (e.g., FEAT-004 depending on FEAT-009) — renumber so dependency order matches numeric order
+4. **Vague Requirements**: "Should be fast" → "Must respond within 200ms at p95"
+5. **Copy-Paste**: Don't duplicate content between FEAT and TD; cross-reference
+6. **Monolithic PRs**: Don't create 2000-line PRs when it could be 4×500-line PRs
+7. **Premature Splitting**: Don't split a 300-LOC feature just to have multiple PRs
 
 ## Examples
 
@@ -542,6 +554,7 @@ See the reference directory for complete examples:
 Before completing, verify:
 
 - [ ] Feature numbers are sequential and unique
+- [ ] Feature numbers reflect dependency order — no feature depends on a higher-numbered feature
 - [ ] All FEAT ↔ TD bidirectional links are correct
 - [ ] Dependencies between features are documented
 - [ ] Each feature has clear acceptance criteria

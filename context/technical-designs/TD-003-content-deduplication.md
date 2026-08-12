@@ -1,11 +1,11 @@
-# TD-002: Content-Based Deduplication
+# TD-003: Content-Based Deduplication
 
 Status: Not Started
 Owner: TBD
 Created: 2026-08-11
 Last Updated: 2026-08-11
 
-Feature Spec: [FEAT-002 - Content-Based Deduplication](../features/FEAT-002-content-deplication.md)
+Feature Spec: [FEAT-003 - Content-Based Deduplication](../features/FEAT-003-content-deplication.md)
 
 ---
 
@@ -355,7 +355,7 @@ Upload Service    Dedup Service      Redis Cache       Database       Storage
 ### Cache Poisoning
 
 - Only internal service writes to `dedup:hash:{hash}` (no user input)
-- Storage verification before finalization (FEAT-001) prevents phantom metadata
+- Storage verification before finalization (FEAT-002) prevents phantom metadata
 
 ---
 

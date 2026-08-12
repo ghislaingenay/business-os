@@ -1,11 +1,11 @@
-# FEAT-002: Content-Based Deduplication
+# FEAT-003: Content-Based Deduplication
 
 Status: Not Started
 Owner: TBD
 Created: 2026-08-11
 Last Updated: 2026-08-11
 
-Technical Design: [TD-002 - Content-Based Deduplication](../technical-designs/TD-002-content-deduplication.md)
+Technical Design: [TD-003 - Content-Based Deduplication](../technical-designs/TD-003-content-deduplication.md)
 
 ---
 
@@ -173,8 +173,8 @@ So that **only one upload to storage occurs, all requests return success, no dup
 
 # 6. Dependencies
 
-- Depends on: **FEAT-001** (Hybrid Upload Strategy) — dedup integrated into upload flow
-- Depends on: **FEAT-003** (Storage Provider Abstraction) — requires storage interface
+- Depends on: **FEAT-002** (Hybrid Upload Strategy) — dedup integrated into upload flow
+- Depends on: **FEAT-001** (Storage Provider Abstraction) — requires storage interface
 - Blocks: None (other features can proceed independently)
 - Related: **FEAT-006** (Rate Limiting) — uses same Redis infrastructure
 

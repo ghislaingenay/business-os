@@ -1,11 +1,11 @@
-# TD-001: Hybrid Upload Strategy
+# TD-002: Hybrid Upload Strategy
 
 Status: Not Started
 Owner: TBD
 Created: 2026-08-11
 Last Updated: 2026-08-11
 
-Feature Spec: [FEAT-001 - Hybrid Upload Strategy](../features/FEAT-001-hybrid-upload-strategy.md)
+Feature Spec: [FEAT-002 - Hybrid Upload Strategy](../features/FEAT-002-hybrid-upload-strategy.md)
 
 ---
 
@@ -105,7 +105,7 @@ POST /finalize (verify + commit)
 
 ### `src/storage/provider.py`
 
-**Purpose**: Storage provider abstract interface (already defined in FEAT-003, used here)
+**Purpose**: Storage provider abstract interface (already defined in FEAT-001, used here)
 
 ## Modified Components
 
@@ -126,7 +126,7 @@ CREATE TABLE files (
     filename VARCHAR(255) NOT NULL,            -- Original client filename
     size BIGINT NOT NULL,                      -- File size in bytes
     mime_type VARCHAR(127) NOT NULL,           -- Content type (image/jpeg, etc.)
-    sha256_hash CHAR(64) NULL,                 -- Content hash (populated by FEAT-002)
+    sha256_hash CHAR(64) NULL,                 -- Content hash (populated by FEAT-003)
     upload_strategy VARCHAR(20) NOT NULL,      -- 'mediated' or 'presigned'
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -477,7 +477,7 @@ Client                FastAPI Service        Storage Provider     Database
 - [ ] `test_large_file_rejected_if_too_small()` — /initiate returns 400 for 1MB file
 - [ ] `test_presigned_url_expires()` — finalize fails after 15 minutes
 - [ ] `test_finalize_without_upload()` — finalize returns 400 if file not in storage
-- [ ] `test_concurrent_uploads_same_file()` — verify no race conditions (with FEAT-002)
+- [ ] `test_concurrent_uploads_same_file()` — verify no race conditions (with FEAT-003)
 - [ ] `test_storage_provider_failure_handling()` — graceful error on S3 500
 
 ## Performance Tests
@@ -514,7 +514,7 @@ Client                FastAPI Service        Storage Provider     Database
   - `tests/integration/test_small_upload.py`
   - `tests/integration/conftest.py` (MinIO fixtures)
 - Tests: Integration tests with MinIO, error case coverage
-- Depends on: Phase 1 merged, FEAT-003 storage interface available
+- Depends on: Phase 1 merged, FEAT-001 storage interface available
 
 ## Phase 3: PR3 - Large File Upload
 
@@ -583,7 +583,7 @@ Client                FastAPI Service        Storage Provider     Database
 
 - Cache upload session lookups (upload_id → session data) with 15-minute TTL
 - Reduce database load for finalize calls
-- Implemented in FEAT-002 (deduplication) infrastructure
+- Implemented in FEAT-003 (deduplication) infrastructure
 
 ---
 
@@ -599,7 +599,7 @@ MAX_SMALL_FILE_SIZE=2097152           # 2MB in bytes
 PRESIGNED_URL_TTL=900                 # 15 minutes in seconds
 ALLOWED_FILE_TYPES=image/jpeg,image/png,image/gif,video/mp4
 
-# Storage provider (injected by FEAT-003)
+# Storage provider (injected by FEAT-001)
 STORAGE_PROVIDER=s3
 S3_BUCKET=prod-uploads
 S3_REGION=us-east-1
