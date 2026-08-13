@@ -98,6 +98,11 @@ ignore = [
     "PLR2004", # Magic value used in comparison
 ]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's DI pattern requires calling Depends() (and friends) in argument
+# defaults; these are the standard exemptions for that idiom.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.File"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
     "ANN",     # Type annotations not required in tests
