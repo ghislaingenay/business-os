@@ -9,8 +9,8 @@ from container import container
 from database import get_session
 from shared.storage.provider import StorageProvider
 from upload.config import UploadSettings
-from upload.repository import SqlFileRepository
-from upload.service import FileRepository, UploadService
+from upload.repository import FileRepository
+from upload.service import UploadService
 from upload.validator import UploadValidator
 
 
@@ -36,7 +36,7 @@ def get_upload_validator(
 def get_file_repository(
     session: AsyncSession = Depends(get_db_session),
 ) -> FileRepository:
-    return SqlFileRepository(session)
+    return FileRepository(session)
 
 
 def get_upload_service(

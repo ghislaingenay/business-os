@@ -3,11 +3,13 @@ from upload.config import UploadSettings
 
 def test_defaults_when_no_env_vars_set(monkeypatch) -> None:
     monkeypatch.delenv("MAX_SMALL_FILE_SIZE", raising=False)
+    monkeypatch.delenv("PRESIGNED_URL_TTL", raising=False)
     monkeypatch.delenv("ALLOWED_FILE_TYPES", raising=False)
 
     settings = UploadSettings()
 
     assert settings.max_small_file_size == 2_097_152
+    assert settings.presigned_url_ttl == 900
     assert settings.allowed_file_types == (
         "image/jpeg",
         "image/png",
@@ -22,6 +24,14 @@ def test_max_small_file_size_read_from_env(monkeypatch) -> None:
     settings = UploadSettings()
 
     assert settings.max_small_file_size == 1_048_576
+
+
+def test_presigned_url_ttl_read_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("PRESIGNED_URL_TTL", "1800")
+
+    settings = UploadSettings()
+
+    assert settings.presigned_url_ttl == 1800
 
 
 def test_allowed_file_types_parsed_from_csv_env(monkeypatch) -> None:
