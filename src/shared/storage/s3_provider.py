@@ -73,12 +73,14 @@ class S3StorageProvider(StorageProvider):
             raise self._translate_error(key, exc) from exc
 
         body = response["Body"]
-        while True:
-            chunk = await asyncio.to_thread(body.read, _DOWNLOAD_CHUNK_SIZE)
-            if not chunk:
-                break
-            yield chunk
-
+        try:
+            while True:
+                chunk = await asyncio.to_thread(body.read, _DOWNLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            body.close()
     async def delete(self, key: str) -> None:
         try:
             await asyncio.to_thread(self._client.delete_object, Bucket=self._bucket, Key=key)
