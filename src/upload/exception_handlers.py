@@ -57,7 +57,7 @@ async def _handle_mime_mismatch(_request: Request, exc: MimeMismatchError) -> JS
             "message": (
                 f"MIME type {exc.mime_type!r} does not match file extension of {exc.filename!r}"
             ),
-            "detected_mime": exc.mime_type,
+            "mime_type": exc.mime_type,
             "filename": exc.filename,
         },
     )
