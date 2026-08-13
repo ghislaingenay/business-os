@@ -17,6 +17,7 @@ class UploadSettings(BaseSettings):
     model_config = SettingsConfigDict(case_sensitive=False)
 
     max_small_file_size: int = Field(default=2_097_152, validation_alias="MAX_SMALL_FILE_SIZE")
+    presigned_url_ttl: int = Field(default=900, validation_alias="PRESIGNED_URL_TTL")
     allowed_file_types: Annotated[tuple[str, ...], NoDecode] = Field(
         default=("image/jpeg", "image/png", "image/gif", "video/mp4"),
         validation_alias="ALLOWED_FILE_TYPES",
