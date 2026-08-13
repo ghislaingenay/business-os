@@ -14,7 +14,7 @@ router = APIRouter(tags=["upload"])
     "/upload",
     response_model=FileMetadata,
     status_code=status.HTTP_200_OK,
-    summary="Upload a small file (<=2MB) via backend-mediated transfer",
+    summary="Upload a small file via backend-mediated transfer (size limit enforced by server config)",
 )
 async def upload_small_file(
     file: UploadFile = FormFile(...),
