@@ -97,10 +97,6 @@ storage_key = await provider.upload("originals/test.jpg", file_stream, {"mime_ty
 
 - Abstract interface, S3 implementation, factory, tests
 
-## Phase 2: GCS Support (PR2)
-
-- GCS implementation, multi-provider tests
-
 ---
 
 # 6. Security Considerations
