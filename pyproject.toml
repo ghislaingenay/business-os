@@ -23,6 +23,7 @@ dependencies = [
     "asyncpg>=0.29.0",
     "dependency-injector>=4.41.0",
     "python-multipart>=0.0.6",
+    "boto3>=1.43.70",
 ]
 
 [project.optional-dependencies]
@@ -34,6 +35,7 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
     "httpx>=0.25.0",
+    "moto>=5.2.2",
 ]
 
 [build-system]
