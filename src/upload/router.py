@@ -20,10 +20,8 @@ async def upload_small_file(
     file: UploadFile = FormFile(...),
     service: UploadService = Depends(get_upload_service),
 ) -> FileMetadata:
-    content = await file.read()
     return await service.upload_small_file(
         filename=file.filename or "",
-        size=len(content),
         mime_type=file.content_type or "",
-        content=content,
+        stream=file,
     )

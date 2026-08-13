@@ -14,6 +14,20 @@ _BUCKET = "test-uploads"
 _REGION = "us-east-1"
 
 
+class AsyncBytesStream:
+    """`ByteStream` (see `upload.service`) over an in-memory `bytes` payload."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._pos = 0
+
+    async def read(self, size: int = -1) -> bytes:
+        end = len(self._data) if size < 0 else self._pos + size
+        chunk = self._data[self._pos : end]
+        self._pos += len(chunk)
+        return chunk
+
+
 class FakeFileRepository:
     """In-memory `FileRepository` (see `upload.service`) for tests without a real DB.
 
