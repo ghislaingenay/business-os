@@ -165,21 +165,6 @@ So that **I can meet data residency requirements**
 
 **Estimated Size**: ~8 files, ~500 LOC
 
-### PR2: [FEAT-001b] - GCS and Multi-Provider Support
-
-**Scope**: GCS implementation, configuration validation
-
-**Dependencies**: Must merge after PR1
-
-**Deliverables**:
-
-- [ ] `src/storage/gcs_provider.py`
-- [ ] Update factory to support GCS
-- [ ] Integration tests with GCS emulator
-- [ ] Documentation: Provider comparison table
-
-**Estimated Size**: ~5 files, ~350 LOC
-
 ---
 
 # 8. Open Questions
