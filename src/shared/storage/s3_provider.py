@@ -81,6 +81,7 @@ class S3StorageProvider(StorageProvider):
                 yield chunk
         finally:
             body.close()
+
     async def delete(self, key: str) -> None:
         try:
             await asyncio.to_thread(self._client.delete_object, Bucket=self._bucket, Key=key)
@@ -137,8 +138,12 @@ class S3StorageProvider(StorageProvider):
         """
         if isinstance(stream, bytes):
             return io.BytesIO(stream)
-        chunks = [chunk async for chunk in stream]
-        return io.BytesIO(b"".join(chunks))
+        # Writing into a BytesIO incrementally avoids the extra copy
+        buffer = io.BytesIO()
+        async for chunk in stream:
+            buffer.write(chunk)
+        buffer.seek(0)
+        return buffer
 
     @staticmethod
     def _translate_error(key: str, exc: ClientError) -> StorageError:
