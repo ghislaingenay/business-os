@@ -71,7 +71,22 @@ async def test_upload_small_file_rejects_oversized_file(
 async def test_upload_small_file_does_not_fully_materialize_oversized_stream(
     service: UploadService,
 ) -> None:
-    huge = AsyncBytesStream(b"x" * 50_000_000)
+    # A lazy stream that generates bytes on-demand exercises the same bounded-read behavior without
+    # the large allocation.
+    class _LazyStream:
+        def __init__(self, total: int) -> None:
+            self._remaining = total
+            self._pos = 0
+
+        async def read(self, size: int = -1) -> bytes:
+            if self._remaining <= 0:
+                return b""
+            chunk_size = self._remaining if size < 0 else min(size, self._remaining)
+            self._remaining -= chunk_size
+            self._pos += chunk_size
+            return b"x" * chunk_size
+
+    huge = _LazyStream(50_000_000)
 
     with pytest.raises(FileTooLargeError):
         await service.upload_small_file(filename="video.mp4", mime_type="video/mp4", stream=huge)
