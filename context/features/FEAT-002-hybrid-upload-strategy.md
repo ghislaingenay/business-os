@@ -1,11 +1,19 @@
 # FEAT-002: Hybrid Upload Strategy
 
-Status: Not Started
+Status: Doing
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-11
+Last Updated: 2026-08-13 (Phase 1 complete)
 
 Technical Design: [TD-002 - Hybrid Upload Strategy](../technical-designs/TD-002-hybrid-upload-strategy.md)
+
+---
+
+## PR Progress
+
+- [x] Phase 1: Upload Foundation (branch: feature/hybrid-upload-a)
+- [ ] Phase 2: Small File Upload - Mediated (branch: feature/hybrid-upload-b)
+- [ ] Phase 3: Large File Upload - Presigned URLs (branch: feature/hybrid-upload-c)
 
 ---
 
@@ -13,7 +21,7 @@ Technical Design: [TD-002 - Hybrid Upload Strategy](../technical-designs/TD-002-
 
 ## Summary
 
-Implement a dual-mode file upload strategy that automatically selects the optimal upload path based on file size: backend-mediated uploads for small files (≤xMB) and presigned URL uploads for large files (>xMB) to balance simplicity, bandwidth efficiency, and scalability. The size threshold (xMB) is configurable and defaults to 2MB (env variable `UPLOAD_SIZE_THRESHOLD_MB`).
+Implement a dual-mode file upload strategy that automatically selects the optimal upload path based on file size: backend-mediated uploads for small files (≤xMB) and presigned URL uploads for large files (>xMB) to balance simplicity, bandwidth efficiency, and scalability. The size threshold (xMB) is configurable and defaults to 2MB (env variable `MAX_SMALL_FILE_SIZE`, in bytes — see TD-002 §12 Configuration).
 
 ## Problem
 
@@ -179,11 +187,11 @@ So that **I can publish video content without overwhelming the API server**
 
 **Deliverables**:
 
-- [ ] `files` table schema with migration (file_id, storage_key, filename, size, mime_type, created_at, updated_at)
-- [ ] `FileMetadata` Pydantic model
-- [ ] `UploadValidator` class (size, type, mime validation)
-- [ ] Configuration for allowed file types and size limits
-- [ ] Unit tests for validation logic
+- [x] `files` table schema with migration (file_id, storage_key, filename, size, mime_type, created_at, updated_at)
+- [x] `FileMetadata` Pydantic model
+- [x] `UploadValidator` class (size, type, mime validation)
+- [x] Configuration for allowed file types and size limits
+- [x] Unit tests for validation logic
 
 **Estimated Size**: ~8 files, ~300 LOC
 

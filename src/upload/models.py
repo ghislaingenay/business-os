@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, Index, String
+from sqlalchemy import BigInteger, CheckConstraint, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -24,7 +24,7 @@ class File(Base):
             "sha256_hash",
             postgresql_where="sha256_hash IS NOT NULL",
         ),
-        Index("idx_files_created_at", "created_at", postgresql_using="btree"),
+        Index("idx_files_created_at", text("created_at DESC")),
     )
 
     file_id: Mapped[uuid.UUID] = mapped_column(

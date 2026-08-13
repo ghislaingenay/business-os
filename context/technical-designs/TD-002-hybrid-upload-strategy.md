@@ -1,11 +1,19 @@
 # TD-002: Hybrid Upload Strategy
 
-Status: Not Started
+Status: Doing
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-11
+Last Updated: 2026-08-13 (Phase 1 complete)
 
 Feature Spec: [FEAT-002 - Hybrid Upload Strategy](../features/FEAT-002-hybrid-upload-strategy.md)
+
+---
+
+## PR Progress
+
+- [x] Phase 1: Upload Foundation (branch: feature/hybrid-upload-a)
+- [ ] Phase 2: Small File Upload - Mediated (branch: feature/hybrid-upload-b)
+- [ ] Phase 3: Large File Upload - Presigned URLs (branch: feature/hybrid-upload-c)
 
 ---
 
