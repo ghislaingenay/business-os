@@ -311,6 +311,20 @@ Avoid:
 
 `service.py` handles business behavior.
 
+### Migrations
+
+Use sequential, zero-padded revision IDs (`001`, `002`, `003`, ...) instead of
+Alembic's default random hex IDs, for readability and to match migration
+ordering to the numbering convention already used in technical designs (e.g.
+`migrations/001_create_files_table.sql`).
+
+```bash
+PYTHONPATH=src alembic revision --rev-id 003 -m "add index to orders"
+```
+
+See `docs/database-migrations.md` for the full migration workflow (running
+Postgres locally, applying/rolling back migrations, autogenerate caveats).
+
 ---
 
 ## 11. Errors
