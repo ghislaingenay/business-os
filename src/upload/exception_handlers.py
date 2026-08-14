@@ -8,7 +8,16 @@ Kept in the owning domain since the response shapes (messages,
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
-from upload.exceptions import FileTooLargeError, InvalidFileTypeError, MimeMismatchError
+from upload.exceptions import (
+    EtagMismatchError,
+    FileTooLargeError,
+    FileTooSmallError,
+    InvalidFileTypeError,
+    MimeMismatchError,
+    PresignedUrlExpiredError,
+    UploadIncompleteError,
+    UploadNotFoundError,
+)
 
 
 def register_upload_exception_handlers(app: FastAPI) -> None:
@@ -21,6 +30,17 @@ def register_upload_exception_handlers(app: FastAPI) -> None:
         _handle_invalid_file_type,  # type: ignore[arg-type]
     )
     app.add_exception_handler(MimeMismatchError, _handle_mime_mismatch)  # type: ignore[arg-type]
+    app.add_exception_handler(FileTooSmallError, _handle_file_too_small)  # type: ignore[arg-type]
+    app.add_exception_handler(UploadNotFoundError, _handle_upload_not_found)  # type: ignore[arg-type]
+    app.add_exception_handler(
+        UploadIncompleteError,
+        _handle_upload_incomplete,  # type: ignore[arg-type]
+    )
+    app.add_exception_handler(
+        PresignedUrlExpiredError,
+        _handle_presigned_url_expired,  # type: ignore[arg-type]
+    )
+    app.add_exception_handler(EtagMismatchError, _handle_etag_mismatch)  # type: ignore[arg-type]
 
 
 async def _handle_file_too_large(_request: Request, exc: FileTooLargeError) -> JSONResponse:
@@ -57,7 +77,68 @@ async def _handle_mime_mismatch(_request: Request, exc: MimeMismatchError) -> JS
             "message": (
                 f"MIME type {exc.mime_type!r} does not match file extension of {exc.filename!r}"
             ),
-            "mime_type": exc.mime_type,
+            "detected_mime": exc.mime_type,
             "filename": exc.filename,
+        },
+    )
+
+
+async def _handle_file_too_small(_request: Request, exc: FileTooSmallError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": "file_too_small",
+            "message": (
+                f"File size ({exc.size} bytes) is <= {exc.max_size} byte limit. "
+                "Use /upload endpoint for small files."
+            ),
+            "suggested_endpoint": "/upload",
+        },
+    )
+
+
+async def _handle_upload_not_found(_request: Request, exc: UploadNotFoundError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={
+            "error": "upload_not_found",
+            "message": "Upload session not found or already finalized",
+            "upload_id": str(exc.upload_id),
+        },
+    )
+
+
+async def _handle_upload_incomplete(_request: Request, exc: UploadIncompleteError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": "upload_incomplete",
+            "message": "File not found in storage. Upload may not have completed successfully.",
+            "storage_key": exc.storage_key,
+        },
+    )
+
+
+async def _handle_presigned_url_expired(
+    _request: Request, exc: PresignedUrlExpiredError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_410_GONE,
+        content={
+            "error": "presigned_url_expired",
+            "message": "Presigned URL expired. Initiate a new upload.",
+            "expired_at": exc.expired_at.isoformat(),
+        },
+    )
+
+
+async def _handle_etag_mismatch(_request: Request, exc: EtagMismatchError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": "etag_mismatch",
+            "message": "Uploaded file's ETag does not match the reported ETag.",
+            "expected_etag": exc.expected,
+            "actual_etag": exc.actual,
         },
     )

@@ -36,6 +36,7 @@ def upgrade() -> None:
         sa.Column("size", sa.BigInteger(), nullable=False),
         sa.Column("mime_type", sa.String(127), nullable=False),
         sa.Column("sha256_hash", sa.String(64), nullable=True),
+        sa.Column("etag", sa.String(255), nullable=True),
         sa.Column("upload_strategy", sa.String(20), nullable=False),
         sa.Column(
             "created_at", sa.TIMESTAMP(), nullable=False, server_default=sa.text("NOW()")

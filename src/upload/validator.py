@@ -3,7 +3,7 @@
 import mimetypes
 import re
 import unicodedata
-from pathlib import Path
+from pathlib import PurePosixPath
 
 from upload.config import UploadSettings
 from upload.exceptions import (
@@ -17,8 +17,17 @@ _FALLBACK_FILENAME = "upload"
 
 
 def sanitize_filename(filename: str) -> str:
-    """Return a safe filename, falling back to a default if the input is empty."""
-    filename = Path(filename).name
+    """Return a safe filename, falling back to a default if the input is empty.
+
+    Uses `PurePosixPath` rather than `Path` deliberately: `Path` resolves to
+    `WindowsPath` on Windows, where `\\` *is* a path separator, so the same
+    input would sanitize differently depending on the host OS the server runs
+    on (e.g. `..\\..\\windows\\config.jpg` would become `config.jpg` on
+    Windows but `windowsconfig.jpg` here). `PurePosixPath` only ever treats
+    `/` as a separator, everywhere, so this function's behavior — and what
+    the tests assert — doesn't depend on the deployment platform.
+    """
+    filename = PurePosixPath(filename).name
 
     # Normalize Unicode characters to standard ASCII forms
     filename = unicodedata.normalize("NFKD", filename).encode("ascii", "ignore").decode("ascii")

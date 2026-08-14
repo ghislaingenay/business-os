@@ -471,6 +471,21 @@ Most business rules should be tested without starting the complete application.
 
 Use dependency injection to replace infrastructure during tests.
 
+Extract a literal into a module-level, underscore-prefixed constant
+(`_MAX_SMALL_FILE_SIZE`, `_LARGE_FILE_SIZE`) once the same value is repeated
+across multiple test functions in a file — one clear source of truth for
+"what does this test data represent" instead of the same magic number/string
+retyped in each test, and a single place to update if the value needs to
+change. The underscore signals it's private to that test module, matching the
+convention already used for module-private helpers (`_read_bounded`,
+`_generate_storage_key`) elsewhere in this codebase — not meant to be
+imported by other test files. Keep the constant name descriptive of what the
+value represents (`_OVERSIZED_MEDIATED_FILE_SIZE`, not `_SIZE_1`), so a
+reader understands the test's intent without cross-referencing the FR/TD.
+Don't extract a literal that appears only once, or that varies meaningfully
+between the few tests using it — that's premature abstraction, not
+deduplication.
+
 ---
 
 ## 17. Python Style

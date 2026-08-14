@@ -1,9 +1,9 @@
 # FEAT-002: Hybrid Upload Strategy
 
-Status: Doing
+Status: Done
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-13 (Phase 1 complete)
+Last Updated: 2026-08-14 (Phase 3 complete, all phases done)
 
 Technical Design: [TD-002 - Hybrid Upload Strategy](../technical-designs/TD-002-hybrid-upload-strategy.md)
 
@@ -12,8 +12,8 @@ Technical Design: [TD-002 - Hybrid Upload Strategy](../technical-designs/TD-002-
 ## PR Progress
 
 - [x] Phase 1: Upload Foundation (branch: feature/hybrid-upload-a)
-- [ ] Phase 2: Small File Upload - Mediated (branch: feature/hybrid-upload-b)
-- [ ] Phase 3: Large File Upload - Presigned URLs (branch: feature/hybrid-upload-c)
+- [x] Phase 2: Small File Upload - Mediated (branch: feature/hybrid-upload-b)
+- [x] Phase 3: Large File Upload - Presigned URLs (branch: feature/hybrid-upload-c)
 
 ---
 
@@ -101,11 +101,11 @@ So that **I can publish video content without overwhelming the API server**
 
 #### Acceptance Criteria
 
-- [ ] Accepts `Content-Type: multipart/form-data` with `file` field
-- [ ] Returns `413 Payload Too Large` if file >xMB
-- [ ] Returns file metadata (file_id, storage_key, size, mime_type, upload_url)
-- [ ] Validates file type against allowlist (configurable)
-- [ ] Validates MIME type matches file extension
+- [x] Accepts `Content-Type: multipart/form-data` with `file` field
+- [x] Returns `413 Payload Too Large` if file >xMB
+- [x] Returns file metadata (file_id, storage_key, size, mime_type, upload_url)
+- [x] Validates file type against allowlist (configurable)
+- [x] Validates MIME type matches file extension
 
 ### FR-2: Large File Upload Initiation
 
@@ -113,12 +113,15 @@ So that **I can publish video content without overwhelming the API server**
 
 #### Acceptance Criteria
 
-- [ ] Accepts JSON body: `{"filename": "...", "size": 15000000, "mime_type": "image/jpeg"}`
-- [ ] Returns `400 Bad Request` if size ≤xMB (should use mediated upload)
-- [ ] Returns presigned upload URL with 15-minute TTL
-- [ ] Returns upload_id for finalization tracking
-- [ ] Validates file type is supported
-- [ ] Applies rate limiting per user
+- [x] Accepts JSON body: `{"filename": "...", "size": 15000000, "mime_type": "image/jpeg"}`
+- [x] Returns `400 Bad Request` if size ≤xMB (should use mediated upload)
+- [x] Returns presigned upload URL with 15-minute TTL
+- [x] Returns upload_id for finalization tracking
+- [x] Validates file type is supported
+- [ ] Applies rate limiting per user — **deferred to FEAT-006** (decided
+      2026-08-14, during Phase 3 review): no auth/user-identity infrastructure
+      exists yet in this codebase for rate limits to key on (see
+      `context/plans/upload-endpoint-authentication.md`).
 
 ### FR-3: Large File Upload Finalization
 
@@ -126,11 +129,18 @@ So that **I can publish video content without overwhelming the API server**
 
 #### Acceptance Criteria
 
-- [ ] Accepts JSON body: `{"upload_id": "...", "etag": "..."}`
-- [ ] Verifies file exists in storage at presigned location
-- [ ] Returns complete file metadata matching small file response format
-- [ ] Returns `404 Not Found` if upload_id invalid or expired
-- [ ] Returns `400 Bad Request` if file not found in storage (upload incomplete)
+- [x] Accepts JSON body: `{"upload_id": "...", "etag": "..."}`
+- [x] Verifies file exists in storage at presigned location
+- [x] Returns complete file metadata matching small file response format
+- [x] Returns `404 Not Found` if upload_id is unknown or already finalized
+- [x] Returns `410 Gone` if upload_id is valid but its presigned URL expired
+      (split out from the original "invalid or expired" wording during Phase 3
+      implementation, 2026-08-14 — see TD-002 §5/§7, which already documented
+      these as two separate response shapes)
+- [x] Returns `400 Bad Request` if file not found in storage (upload incomplete)
+- [x] Returns `400 Bad Request` if client-supplied `etag` doesn't match storage's
+      reported ETag (resolves TD-002 §13's ETag open question, decided during
+      Phase 3 implementation — see `EtagMismatchError`)
 
 ### FR-4: Size-Based Routing Validation
 
@@ -138,10 +148,10 @@ So that **I can publish video content without overwhelming the API server**
 
 #### Acceptance Criteria
 
-- [ ] `/upload` rejects files >xMB with clear error message
-- [ ] `/upload/initiate` rejects requests for files ≤2MB with guidance to use `/upload`
-- [ ] Error responses include recommended endpoint for size
-- [ ] Size validation occurs before any storage operations
+- [x] `/upload` rejects files >xMB with clear error message
+- [x] `/upload/initiate` rejects requests for files ≤2MB with guidance to use `/upload`
+- [x] Error responses include recommended endpoint for size
+- [x] Size validation occurs before any storage operations
 
 ### FR-5: Consistent Response Format
 
@@ -149,10 +159,12 @@ So that **I can publish video content without overwhelming the API server**
 
 #### Acceptance Criteria
 
-- [ ] Both paths return: `{"file_id", "storage_key", "filename", "size", "mime_type", "upload_url", "created_at"}`
-- [ ] Field types match (e.g., size is integer, created_at is ISO8601)
-- [ ] `upload_url` points to file download location (generated after upload)
-- [ ] Documentation clearly states response schema
+- [x] Both paths return: `{"file_id", "storage_key", "filename", "size", "mime_type", "upload_url", "created_at"}`
+- [x] Field types match (e.g., size is integer, created_at is ISO8601)
+- [x] `upload_url` points to file download location (generated after upload) —
+      note: an expiring presigned GET URL, not the permanent CDN-style link
+      shown in TD-002 §5's example; flagged and accepted during Phase 2's review
+- [x] Documentation clearly states response schema
 
 ---
 
@@ -205,13 +217,13 @@ So that **I can publish video content without overwhelming the API server**
 
 **Deliverables**:
 
-- [ ] `POST /upload` FastAPI endpoint (multipart/form-data handler)
-- [ ] `UploadService.upload_small_file()` method
-- [ ] Integration with storage provider (via FEAT-001 interface)
-- [ ] File metadata persistence to database
-- [ ] Error handling (size exceeded, invalid type, storage failure)
-- [ ] Unit tests + integration tests (with MinIO)
-- [ ] OpenAPI schema documentation
+- [x] `POST /upload` FastAPI endpoint (multipart/form-data handler)
+- [x] `UploadService.upload_small_file()` method
+- [x] Integration with storage provider (via FEAT-001 interface)
+- [x] File metadata persistence to database
+- [x] Error handling (size exceeded, invalid type, storage failure)
+- [x] Unit tests + integration tests (moto-backed S3, matching this repo's existing convention over a real MinIO container)
+- [x] OpenAPI schema documentation
 
 **Estimated Size**: ~6 files, ~400 LOC
 
@@ -225,15 +237,15 @@ So that **I can publish video content without overwhelming the API server**
 
 **Deliverables**:
 
-- [ ] `POST /upload/initiate` endpoint (generate presigned URL)
-- [ ] `POST /upload/finalize` endpoint (verify and commit upload)
-- [ ] `UploadService.initiate_large_upload()` method
-- [ ] `UploadService.finalize_large_upload()` method
-- [ ] Presigned URL generation via storage provider
-- [ ] Storage verification (HEAD request to confirm file exists)
-- [ ] Error handling (expiry, file not found, verification failure)
-- [ ] Integration tests (presigned URL workflow)
-- [ ] OpenAPI schema documentation
+- [x] `POST /upload/initiate` endpoint (generate presigned URL)
+- [x] `POST /upload/finalize` endpoint (verify and commit upload)
+- [x] `UploadService.initiate_large_upload()` method
+- [x] `UploadService.finalize_large_upload()` method
+- [x] Presigned URL generation via storage provider
+- [x] Storage verification (HEAD request to confirm file exists)
+- [x] Error handling (expiry, file not found, verification failure, ETag mismatch)
+- [x] Integration tests (moto-backed S3, matching this repo's existing convention)
+- [x] OpenAPI schema documentation
 
 **Estimated Size**: ~8 files, ~450 LOC
 
