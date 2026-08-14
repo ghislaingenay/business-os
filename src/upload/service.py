@@ -142,17 +142,15 @@ class UploadService:
             raise finish_result
         if isinstance(save_result, Exception):
             raise save_result
-        saved = save_result
-            self.repository.save(
-                File(
-                    storage_key=storage_key,
-                    filename=safe_filename,
-                    size=len(content),
-                    mime_type=mime_type,
-                    sha256_hash=sha256_hash,
-                    upload_strategy="mediated",
-                )
-            ),
+        saved = await self.repository.save(
+            File(
+                storage_key=storage_key,
+                filename=safe_filename,
+                size=len(content),
+                mime_type=mime_type,
+                sha256_hash=sha256_hash,
+                upload_strategy="mediated",
+            )
         )
 
         upload_url = await self.storage.generate_presigned_url(

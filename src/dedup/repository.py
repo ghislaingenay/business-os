@@ -36,10 +36,3 @@ class DedupRepository:
         except SQLAlchemyError as exc:
             raise DedupDatabaseUnavailableError(f"Hash lookup failed: {exc}") from exc
         return result.scalar_one_or_none()
-                timeout=self.query_timeout_seconds,
-            )
-        except TimeoutError as exc:
-            raise DedupDatabaseUnavailableError(
-                f"Hash lookup timed out after {self.query_timeout_seconds}s"
-            ) from exc
-        return result.scalar_one_or_none()
