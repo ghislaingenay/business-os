@@ -1,6 +1,6 @@
 """Redis-backed cache provider."""
 
-from typing import cast
+from typing import Protocol, cast
 
 from redis import asyncio as redis_asyncio
 from redis.exceptions import RedisError
@@ -20,15 +20,43 @@ end
 """
 
 
+class _RedisClientProtocol(Protocol):
+    """The subset of `redis.asyncio.Redis` this provider calls.
+
+    redis-py ships inline types, but which specific methods are actually
+    annotated varies by installed version (e.g. `eval` lacks coverage in some
+    versions, other methods in others) — casting `from_url()`'s result to
+    this locally-owned Protocol means every call below is checked against a
+    signature we control, not whatever a given redis-py version happens to
+    provide, so this file's type-checking is deterministic regardless of
+    which version is installed.
+    """
+
+    async def get(self, key: str) -> str | None:
+        ...
+
+    async def set(self, key: str, value: str, *, ex: int | None = None, nx: bool = False) -> object:
+        ...
+
+    async def expire(self, key: str, seconds: int) -> object:
+        ...
+
+    async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> object:
+        ...
+
+
 class RedisCacheProvider(CacheProvider):
     """`CacheProvider` backed by `redis.asyncio.Redis`."""
 
     def __init__(self, redis_url: str) -> None:
-        self._client = redis_asyncio.from_url(redis_url, decode_responses=True)  # type: ignore
+        self._client = cast(
+            _RedisClientProtocol,
+            redis_asyncio.from_url(redis_url, decode_responses=True),
+        )
 
     async def get(self, key: str) -> str | None:
         try:
-            return cast(str | None, await self._client.get(key))
+            return await self._client.get(key)
         except RedisError as exc:
             raise CacheUnavailableError(f"Redis GET failed for key {key!r}: {exc}") from exc
 
@@ -53,13 +81,7 @@ class RedisCacheProvider(CacheProvider):
 
     async def delete_if_matches(self, key: str, expected_value: str) -> bool:
         try:
-            # `eval` lacks type stub coverage in redis-py itself (unlike most
-            # of its client, which is fully typed) — narrower than the
-            # `ignore_missing_imports` override above, which only covers the
-            # whole-module-not-found case, not this per-method gap.
-            result = cast(
-                int, await self._client.eval(_DELETE_IF_MATCHES_SCRIPT, 1, key, expected_value)
-            )
+            result = await self._client.eval(_DELETE_IF_MATCHES_SCRIPT, 1, key, expected_value)
         except RedisError as exc:
             raise CacheUnavailableError(f"Redis DEL failed for key {key!r}: {exc}") from exc
         return bool(result)

@@ -6,6 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from dedup.exceptions import DedupDatabaseUnavailableError
 from exceptions import register_exception_handlers
 from shared.storage.exceptions import StorageError
 from shared.storage.s3_provider import S3StorageProvider
@@ -147,6 +148,20 @@ def test_upload_endpoint_returns_503_when_storage_unavailable(app: FastAPI) -> N
 
     assert response.status_code == 503
     assert response.json()["error"] == "storage_unavailable"
+
+
+def test_upload_endpoint_returns_503_when_dedup_database_unavailable(app: FastAPI) -> None:
+    app.dependency_overrides[get_upload_service] = lambda: _RaisingService(
+        DedupDatabaseUnavailableError("timed out")
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/upload", files={"file": ("profile.jpg", io.BytesIO(b"data"), "image/jpeg")}
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"] == "dedup_database_unavailable"
 
 
 def test_upload_endpoint_end_to_end_with_real_storage(
