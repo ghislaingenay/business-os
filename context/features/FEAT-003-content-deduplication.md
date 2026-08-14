@@ -1,9 +1,9 @@
 # FEAT-003: Content-Based Deduplication
 
-Status: Not Started
+Status: Doing
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-11
+Last Updated: 2026-08-14
 
 Technical Design: [TD-003 - Content-Based Deduplication](../technical-designs/TD-003-content-deduplication.md)
 
@@ -209,8 +209,19 @@ So that **only one upload to storage occurs, all requests return success, no dup
 
 # 8. Open Questions
 
-- [ ] Should we expose SHA-256 hash in file metadata response for client-side verification?
-- [ ] How do we handle hash collisions (theoretically possible with SHA-256, probability ~10^-60)?
+- [x] Should we expose SHA-256 hash in file metadata response for client-side verification?
+      **Resolved — already answered in TD-003 §5**: yes, `sha256_hash` is included in the
+      API response as an optional field.
+- [x] How do we handle hash collisions (theoretically possible with SHA-256, probability ~10^-60)?
+      **Resolved 2026-08-14** (see TD-003 §13): trust the hash match, no byte-by-byte
+      verification — matches SHA-256's collision-resistance rationale and preserves the
+      dedup-hit latency targets.
 - [ ] Should we implement garbage collection for unreferenced storage keys (ref counting)?
+      Out of scope: listed under FEAT-003 §1 Non-Goals as a future feature.
 - [ ] Do we need admin API to manually invalidate cache for specific hash (force re-dedup)?
-- [ ] Should we support client-provided hashes to skip server-side calculation (trust model)?
+      Out of scope: not part of the Single PR Implementation deliverables (§7).
+- [x] Should we support client-provided hashes to skip server-side calculation (trust model)?
+      **Resolved — already answered by FR-1**: hash is always calculated server-side
+      (in-memory for mediated uploads, on finalize for presigned); accepting a
+      client-supplied hash would let a client claim dedup against content it never
+      uploaded.

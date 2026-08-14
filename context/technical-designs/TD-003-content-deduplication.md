@@ -1,9 +1,9 @@
 # TD-003: Content-Based Deduplication
 
-Status: Not Started
+Status: Doing
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-11
+Last Updated: 2026-08-14
 
 Feature Spec: [FEAT-003 - Content-Based Deduplication](../features/FEAT-003-content-deplication.md)
 
@@ -432,6 +432,14 @@ SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'files' AND indexna
 # 13. Open Questions
 
 - [ ] Should we backfill `sha256_hash` for existing files (migration script)?
+      Out of scope: §4's schema rationale explicitly allows NULL for legacy files; not
+      part of the Single PR (§9) deliverables.
 - [ ] Do we need admin API to force cache invalidation for specific hash?
+      Out of scope: not part of the Single PR (§9) deliverables.
 - [ ] Should we implement reference counting for garbage collection (track file_count per storage_key)?
-- [ ] How do we handle SHA-256 collision (theoretical) — verify file content byte-by-byte?
+      Out of scope: matches FEAT-003 §1 Non-Goals (garbage collection is a future feature).
+- [x] How do we handle SHA-256 collision (theoretical) — verify file content byte-by-byte?
+      **Resolved 2026-08-14**: Trust the hash match, no byte-by-byte verification. Matches
+      §10's rationale for choosing SHA-256 (collision resistance ~2^-128, cryptographically
+      infeasible) and preserves the <100ms/<200ms latency targets in FR-2/FR-3 — a byte
+      comparison would require fetching the existing object from storage on every dedup hit.
