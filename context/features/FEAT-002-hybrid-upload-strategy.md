@@ -1,9 +1,9 @@
 # FEAT-002: Hybrid Upload Strategy
 
-Status: Doing
+Status: Done
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-14 (Phase 2 complete)
+Last Updated: 2026-08-14 (Phase 3 complete, all phases done)
 
 Technical Design: [TD-002 - Hybrid Upload Strategy](../technical-designs/TD-002-hybrid-upload-strategy.md)
 
@@ -13,7 +13,7 @@ Technical Design: [TD-002 - Hybrid Upload Strategy](../technical-designs/TD-002-
 
 - [x] Phase 1: Upload Foundation (branch: feature/hybrid-upload-a)
 - [x] Phase 2: Small File Upload - Mediated (branch: feature/hybrid-upload-b)
-- [ ] Phase 3: Large File Upload - Presigned URLs (branch: feature/hybrid-upload-c)
+- [x] Phase 3: Large File Upload - Presigned URLs (branch: feature/hybrid-upload-c)
 
 ---
 
@@ -113,11 +113,11 @@ So that **I can publish video content without overwhelming the API server**
 
 #### Acceptance Criteria
 
-- [ ] Accepts JSON body: `{"filename": "...", "size": 15000000, "mime_type": "image/jpeg"}`
-- [ ] Returns `400 Bad Request` if size ≤xMB (should use mediated upload)
-- [ ] Returns presigned upload URL with 15-minute TTL
-- [ ] Returns upload_id for finalization tracking
-- [ ] Validates file type is supported
+- [x] Accepts JSON body: `{"filename": "...", "size": 15000000, "mime_type": "image/jpeg"}`
+- [x] Returns `400 Bad Request` if size ≤xMB (should use mediated upload)
+- [x] Returns presigned upload URL with 15-minute TTL
+- [x] Returns upload_id for finalization tracking
+- [x] Validates file type is supported
 - [ ] Applies rate limiting per user — **deferred to FEAT-006** (decided
       2026-08-14, during Phase 3 review): no auth/user-identity infrastructure
       exists yet in this codebase for rate limits to key on (see
@@ -129,16 +129,16 @@ So that **I can publish video content without overwhelming the API server**
 
 #### Acceptance Criteria
 
-- [ ] Accepts JSON body: `{"upload_id": "...", "etag": "..."}`
-- [ ] Verifies file exists in storage at presigned location
-- [ ] Returns complete file metadata matching small file response format
-- [ ] Returns `404 Not Found` if upload_id is unknown or already finalized
-- [ ] Returns `410 Gone` if upload_id is valid but its presigned URL expired
+- [x] Accepts JSON body: `{"upload_id": "...", "etag": "..."}`
+- [x] Verifies file exists in storage at presigned location
+- [x] Returns complete file metadata matching small file response format
+- [x] Returns `404 Not Found` if upload_id is unknown or already finalized
+- [x] Returns `410 Gone` if upload_id is valid but its presigned URL expired
       (split out from the original "invalid or expired" wording during Phase 3
       implementation, 2026-08-14 — see TD-002 §5/§7, which already documented
       these as two separate response shapes)
-- [ ] Returns `400 Bad Request` if file not found in storage (upload incomplete)
-- [ ] Returns `400 Bad Request` if client-supplied `etag` doesn't match storage's
+- [x] Returns `400 Bad Request` if file not found in storage (upload incomplete)
+- [x] Returns `400 Bad Request` if client-supplied `etag` doesn't match storage's
       reported ETag (resolves TD-002 §13's ETag open question, decided during
       Phase 3 implementation — see `EtagMismatchError`)
 
@@ -149,7 +149,7 @@ So that **I can publish video content without overwhelming the API server**
 #### Acceptance Criteria
 
 - [x] `/upload` rejects files >xMB with clear error message
-- [ ] `/upload/initiate` rejects requests for files ≤2MB with guidance to use `/upload`
+- [x] `/upload/initiate` rejects requests for files ≤2MB with guidance to use `/upload`
 - [x] Error responses include recommended endpoint for size
 - [x] Size validation occurs before any storage operations
 
@@ -159,10 +159,12 @@ So that **I can publish video content without overwhelming the API server**
 
 #### Acceptance Criteria
 
-- [ ] Both paths return: `{"file_id", "storage_key", "filename", "size", "mime_type", "upload_url", "created_at"}`
-- [ ] Field types match (e.g., size is integer, created_at is ISO8601)
-- [ ] `upload_url` points to file download location (generated after upload)
-- [ ] Documentation clearly states response schema
+- [x] Both paths return: `{"file_id", "storage_key", "filename", "size", "mime_type", "upload_url", "created_at"}`
+- [x] Field types match (e.g., size is integer, created_at is ISO8601)
+- [x] `upload_url` points to file download location (generated after upload) —
+      note: an expiring presigned GET URL, not the permanent CDN-style link
+      shown in TD-002 §5's example; flagged and accepted during Phase 2's review
+- [x] Documentation clearly states response schema
 
 ---
 
@@ -235,15 +237,15 @@ So that **I can publish video content without overwhelming the API server**
 
 **Deliverables**:
 
-- [ ] `POST /upload/initiate` endpoint (generate presigned URL)
-- [ ] `POST /upload/finalize` endpoint (verify and commit upload)
-- [ ] `UploadService.initiate_large_upload()` method
-- [ ] `UploadService.finalize_large_upload()` method
-- [ ] Presigned URL generation via storage provider
-- [ ] Storage verification (HEAD request to confirm file exists)
-- [ ] Error handling (expiry, file not found, verification failure)
-- [ ] Integration tests (presigned URL workflow)
-- [ ] OpenAPI schema documentation
+- [x] `POST /upload/initiate` endpoint (generate presigned URL)
+- [x] `POST /upload/finalize` endpoint (verify and commit upload)
+- [x] `UploadService.initiate_large_upload()` method
+- [x] `UploadService.finalize_large_upload()` method
+- [x] Presigned URL generation via storage provider
+- [x] Storage verification (HEAD request to confirm file exists)
+- [x] Error handling (expiry, file not found, verification failure, ETag mismatch)
+- [x] Integration tests (moto-backed S3, matching this repo's existing convention)
+- [x] OpenAPI schema documentation
 
 **Estimated Size**: ~8 files, ~450 LOC
 
