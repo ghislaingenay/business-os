@@ -102,7 +102,7 @@ async def _handle_upload_not_found(_request: Request, exc: UploadNotFoundError) 
         status_code=status.HTTP_404_NOT_FOUND,
         content={
             "error": "upload_not_found",
-            "message": "Upload session not found or expired",
+            "message": "Upload session not found or already finalized",
             "upload_id": str(exc.upload_id),
         },
     )

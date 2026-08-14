@@ -168,8 +168,9 @@ class UploadService:
         except StorageObjectNotFoundError as exc:
             raise UploadIncompleteError(session.storage_key) from exc
 
-        if storage_metadata.etag != etag:
-            raise EtagMismatchError(expected=etag, actual=storage_metadata.etag)
+        normalized_etag = etag.strip().removeprefix("W/").strip('"')
+        if storage_metadata.etag != normalized_etag:
+            raise EtagMismatchError(expected=normalized_etag, actual=storage_metadata.etag)
 
         # Order matters for atomicity: mark_finalized only mutates (see its
         # docstring) — repository.save()'s commit right after is what actually
