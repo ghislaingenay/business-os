@@ -1,8 +1,10 @@
+import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from shared.storage.exceptions import StorageError, StorageObjectNotFoundError
 from shared.storage.s3_provider import S3StorageProvider
 from upload.config import UploadSettings
 from upload.exceptions import (
@@ -19,7 +21,12 @@ from upload.schemas import FileMetadata, UploadSessionMetadata
 from upload.service import UploadService
 from upload.validator import UploadValidator
 
-from .conftest import AsyncBytesStream, FakeFileRepository, FakeUploadSessionRepository
+from .conftest import (
+    AsyncBytesStream,
+    FakeDedupService,
+    FakeFileRepository,
+    FakeUploadSessionRepository,
+)
 
 _LARGE_FILE_SIZE = 5_000_000
 _VIDEO_MIME_TYPE = "video/mp4"
@@ -31,12 +38,14 @@ def service(
     s3_storage_provider: S3StorageProvider,
     fake_file_repository: FakeFileRepository,
     fake_upload_session_repository: FakeUploadSessionRepository,
+    fake_dedup_service: FakeDedupService,
 ) -> UploadService:
     return UploadService(
         validator=UploadValidator(upload_settings),
         storage=s3_storage_provider,
         repository=fake_file_repository,
         session_repository=fake_upload_session_repository,
+        dedup_service=fake_dedup_service,
         presigned_url_ttl=upload_settings.presigned_url_ttl,
     )
 
@@ -57,6 +66,94 @@ async def test_upload_small_file_success(
     assert metadata.upload_url
     assert len(fake_file_repository.saved) == 1
     assert fake_file_repository.saved[0].upload_strategy == "mediated"
+
+
+async def test_upload_small_file_persists_sha256_hash(
+    service: UploadService, fake_file_repository: FakeFileRepository
+) -> None:
+    content = b"hello world"
+
+    metadata = await service.upload_small_file(
+        filename="profile.jpg", mime_type="image/jpeg", stream=AsyncBytesStream(content)
+    )
+
+    expected_hash = hashlib.sha256(content).hexdigest()
+    assert metadata.sha256_hash == expected_hash
+    assert fake_file_repository.saved[0].sha256_hash == expected_hash
+
+
+async def test_upload_small_file_checks_dedup_with_content_hash(
+    service: UploadService, fake_dedup_service: FakeDedupService
+) -> None:
+    content = b"hello world"
+
+    await service.upload_small_file(
+        filename="profile.jpg", mime_type="image/jpeg", stream=AsyncBytesStream(content)
+    )
+
+    assert fake_dedup_service.check_calls == [hashlib.sha256(content).hexdigest()]
+
+
+async def test_upload_small_file_skips_storage_upload_on_dedup_hit(
+    upload_settings: UploadSettings,
+    s3_storage_provider: S3StorageProvider,
+    fake_file_repository: FakeFileRepository,
+    fake_upload_session_repository: FakeUploadSessionRepository,
+) -> None:
+    existing_key = "originals/2026/08/01/preexisting.jpg"
+    dedup_service = FakeDedupService(existing_storage_key=existing_key)
+    service = UploadService(
+        validator=UploadValidator(upload_settings),
+        storage=s3_storage_provider,
+        repository=fake_file_repository,
+        session_repository=fake_upload_session_repository,
+        dedup_service=dedup_service,
+        presigned_url_ttl=upload_settings.presigned_url_ttl,
+    )
+
+    metadata = await service.upload_small_file(
+        filename="profile.jpg", mime_type="image/jpeg", stream=AsyncBytesStream(b"hello world")
+    )
+
+    # FR-2: existing storage_key reused, no new object written to storage.
+    assert metadata.storage_key == existing_key
+    with pytest.raises(StorageObjectNotFoundError):
+        await s3_storage_provider.head(existing_key)
+    assert dedup_service.finish_calls == [
+        (hashlib.sha256(b"hello world").hexdigest(), existing_key)
+    ]
+
+
+async def test_upload_small_file_aborts_dedup_lock_on_storage_failure(
+    upload_settings: UploadSettings,
+    fake_file_repository: FakeFileRepository,
+    fake_upload_session_repository: FakeUploadSessionRepository,
+) -> None:
+    """FR-4 AC: the dedup lock is released on failure, not just success."""
+
+    class _FailingStorage:
+        async def upload(self, *_args: object, **_kwargs: object) -> str:
+            raise StorageError("simulated storage outage")
+
+    dedup_service = FakeDedupService()
+    service = UploadService(
+        validator=UploadValidator(upload_settings),
+        storage=_FailingStorage(),  # type: ignore[arg-type]
+        repository=fake_file_repository,
+        session_repository=fake_upload_session_repository,
+        dedup_service=dedup_service,
+        presigned_url_ttl=upload_settings.presigned_url_ttl,
+    )
+    content = b"hello world"
+
+    with pytest.raises(StorageError):
+        await service.upload_small_file(
+            filename="profile.jpg", mime_type="image/jpeg", stream=AsyncBytesStream(content)
+        )
+
+    assert dedup_service.abort_calls == [hashlib.sha256(content).hexdigest()]
+    assert dedup_service.finish_calls == []  # no storage_key was ever written
+    assert fake_file_repository.saved == []
 
 
 async def test_upload_small_file_persists_bytes_to_storage(
@@ -236,6 +333,34 @@ async def test_finalize_large_upload_success(
     assert fake_file_repository.saved[0].upload_strategy == "presigned"
     assert fake_file_repository.saved[0].etag == real_etag
     assert fake_upload_session_repository.saved[0].finalized is True
+
+
+async def test_finalize_large_upload_persists_sha256_hash_and_checks_dedup(
+    service: UploadService,
+    s3_storage_provider: S3StorageProvider,
+    fake_file_repository: FakeFileRepository,
+    fake_dedup_service: FakeDedupService,
+) -> None:
+    session_metadata = await service.initiate_large_upload(
+        filename="video.mp4", size=_LARGE_FILE_SIZE, mime_type=_VIDEO_MIME_TYPE
+    )
+    content = b"x" * _LARGE_FILE_SIZE
+    await s3_storage_provider.upload(session_metadata.storage_key, content)
+    real_etag = (await s3_storage_provider.head(session_metadata.storage_key)).etag
+
+    metadata = await service.finalize_large_upload(
+        upload_id=session_metadata.upload_id, etag=real_etag
+    )
+
+    # FR-1: hash calculated on finalize (streamed from storage, not buffered
+    # server-side, since the client PUT directly to storage).
+    expected_hash = hashlib.sha256(content).hexdigest()
+    assert metadata.sha256_hash == expected_hash
+    assert fake_file_repository.saved[0].sha256_hash == expected_hash
+    assert fake_dedup_service.check_calls == [expected_hash]
+    # Resolved 2026-08-14 (TD-003 §3): a dedup hit on the presigned path only
+    # records the hash — it does NOT repoint storage_key to an existing one.
+    assert fake_dedup_service.finish_calls == [(expected_hash, session_metadata.storage_key)]
 
 
 async def test_finalize_large_upload_raises_not_found_for_unknown_upload_id(

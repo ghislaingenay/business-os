@@ -1,9 +1,9 @@
 # FEAT-003: Content-Based Deduplication
 
-Status: Not Started
+Status: Doing
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-11
+Last Updated: 2026-08-14
 
 Technical Design: [TD-003 - Content-Based Deduplication](../technical-designs/TD-003-content-deduplication.md)
 
@@ -95,11 +95,14 @@ So that **only one upload to storage occurs, all requests return success, no dup
 
 #### Acceptance Criteria
 
-- [ ] Hash calculated for all uploads (small and large files)
-- [ ] Hash calculated on complete file content (not partial)
-- [ ] For mediated uploads: Hash calculated in-memory during upload processing
-- [ ] For presigned URL uploads: Hash calculated after upload completes (on finalize)
-- [ ] Hash stored in `files.sha256_hash` column (CHAR(64) hex-encoded)
+- [x] Hash calculated for all uploads (small and large files)
+- [x] Hash calculated on complete file content (not partial)
+- [x] For mediated uploads: Hash calculated in-memory during upload processing
+- [x] For presigned URL uploads: Hash calculated after upload completes (on finalize)
+- [x] Hash stored in `files.sha256_hash` column (CHAR(64) hex-encoded)
+      Note: actual column is `VARCHAR(64)` (SQLAlchemy `String(64)`), not literally
+      `CHAR(64)` — see TD-003 §14. Functionally equivalent for a fixed-length hex
+      string; substance of the AC (hash stored, hex-encoded, 64 chars) is met.
 
 ### FR-2: Deduplication Check via Redis Cache
 
@@ -107,11 +110,15 @@ So that **only one upload to storage occurs, all requests return success, no dup
 
 #### Acceptance Criteria
 
-- [ ] Redis key format: `dedup:hash:{sha256_hash}` → `{storage_key}`
-- [ ] Cache TTL: 24 hours (renewed on every hit)
-- [ ] Cache hit: Return existing storage_key without storage API call
-- [ ] Cache miss: Fallback to database query
+- [x] Redis key format: `dedup:hash:{sha256_hash}` → `{storage_key}`
+- [x] Cache TTL: 24 hours (renewed on every hit)
+- [x] Cache hit: Return existing storage_key without storage API call
+- [x] Cache miss: Fallback to database query
 - [ ] Metrics logged: `dedup_check_result` (hit/miss/error)
+      Not fully satisfied: code logs event name `dedup_check` (per FR-6's literal
+      example), not `dedup_check_result`; the database-unavailable path also logs a
+      separate `database_unavailable` event rather than `dedup_check` with
+      `result: "error"`. Left as-is per explicit decision 2026-08-14 — see TD-003 §14.
 
 ### FR-3: Database Fallback for Cache Misses
 
@@ -119,10 +126,10 @@ So that **only one upload to storage occurs, all requests return success, no dup
 
 #### Acceptance Criteria
 
-- [ ] Query: `SELECT storage_key FROM files WHERE sha256_hash = $1 LIMIT 1`
-- [ ] If found: Write to Redis cache (populate cache), return storage_key
-- [ ] If not found: Proceed with upload to storage
-- [ ] Database query timeout: 5 seconds (fail fast)
+- [x] Query: `SELECT storage_key FROM files WHERE sha256_hash = $1 LIMIT 1`
+- [x] If found: Write to Redis cache (populate cache), return storage_key
+- [x] If not found: Proceed with upload to storage
+- [x] Database query timeout: 5 seconds (fail fast)
 
 ### FR-4: Distributed Lock for Race Prevention
 
@@ -130,11 +137,15 @@ So that **only one upload to storage occurs, all requests return success, no dup
 
 #### Acceptance Criteria
 
-- [ ] Lock key format: `lock:hash:{sha256_hash}`
-- [ ] Lock acquired via Redis `SET NX EX 10` (10-second TTL)
-- [ ] Lock acquisition failure: Wait 50ms, retry up to 3 times, then proceed (fail-open)
-- [ ] Lock released after upload completes (or on failure)
-- [ ] Metrics logged: `dedup_lock_acquired`, `dedup_lock_wait_time_ms`
+- [x] Lock key format: `lock:hash:{sha256_hash}`
+- [x] Lock acquired via Redis `SET NX EX 10` (10-second TTL)
+- [x] Lock acquisition failure: Wait 50ms, retry up to 3 times, then proceed (fail-open)
+- [x] Lock released after upload completes (or on failure)
+      Fixed 2026-08-14: `DedupService.abort()` releases the lock when the caller's
+      own upload work fails, without caching an unwritten storage_key — see TD-003 §14.
+- [x] Metrics logged: `dedup_lock_acquired`, `dedup_lock_wait_time_ms`
+      Logged as one combined event (`dedup_lock_acquired` with a `dedup_lock_wait_time_ms`
+      field) rather than two separate log lines — judged to satisfy the AC's intent.
 
 ### FR-5: Cache Population on Upload
 
@@ -142,11 +153,17 @@ So that **only one upload to storage occurs, all requests return success, no dup
 
 #### Acceptance Criteria
 
-- [ ] Write to both Redis and database in parallel (dual-write pattern)
-- [ ] Redis write failure: Log warning, continue (graceful degradation)
+- [x] Write to both Redis and database in parallel (dual-write pattern)
+      Fixed 2026-08-14: `asyncio.gather` runs `dedup_service.finish()` and the `File`
+      persistence concurrently in both upload paths — see TD-003 §14.
+- [x] Redis write failure: Log warning, continue (graceful degradation)
 - [ ] Database write failure: Return 500, rollback storage upload if possible
-- [ ] Redis write includes 24-hour TTL
-- [ ] Database write includes full file metadata
+      Partially satisfied: an unhandled DB error does surface as a 500 (FastAPI's
+      default handling), but no rollback of the already-uploaded storage object
+      exists. Pre-existing gap inherited from FEAT-002's mediated flow, not
+      introduced by FEAT-003 — left unchecked since the rollback half isn't built.
+- [x] Redis write includes 24-hour TTL
+- [x] Database write includes full file metadata
 
 ### FR-6: Deduplication Metrics
 
@@ -209,8 +226,19 @@ So that **only one upload to storage occurs, all requests return success, no dup
 
 # 8. Open Questions
 
-- [ ] Should we expose SHA-256 hash in file metadata response for client-side verification?
-- [ ] How do we handle hash collisions (theoretically possible with SHA-256, probability ~10^-60)?
+- [x] Should we expose SHA-256 hash in file metadata response for client-side verification?
+      **Resolved — already answered in TD-003 §5**: yes, `sha256_hash` is included in the
+      API response as an optional field.
+- [x] How do we handle hash collisions (theoretically possible with SHA-256, probability ~10^-60)?
+      **Resolved 2026-08-14** (see TD-003 §13): trust the hash match, no byte-by-byte
+      verification — matches SHA-256's collision-resistance rationale and preserves the
+      dedup-hit latency targets.
 - [ ] Should we implement garbage collection for unreferenced storage keys (ref counting)?
+      Out of scope: listed under FEAT-003 §1 Non-Goals as a future feature.
 - [ ] Do we need admin API to manually invalidate cache for specific hash (force re-dedup)?
-- [ ] Should we support client-provided hashes to skip server-side calculation (trust model)?
+      Out of scope: not part of the Single PR Implementation deliverables (§7).
+- [x] Should we support client-provided hashes to skip server-side calculation (trust model)?
+      **Resolved — already answered by FR-1**: hash is always calculated server-side
+      (in-memory for mediated uploads, on finalize for presigned); accepting a
+      client-supplied hash would let a client claim dedup against content it never
+      uploaded.

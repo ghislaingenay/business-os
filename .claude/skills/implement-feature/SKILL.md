@@ -44,6 +44,27 @@ a phase identifier for multi-PR features (e.g., `FEAT-001 phase 1`, `FEAT-001-a`
   - If the user doesn't specify, implement the next incomplete phase in sequence
 - If not found, proceed with the entire feature as a single implementation.
 
+1b. **Triage the FEAT's and TD's "Open Questions" sections before marking anything
+    Doing.** For each open question (checked or unchecked), decide whether it
+    blocks a design decision the current scope depends on:
+    - **In scope and blocking** (e.g. it determines a schema field, an API
+      response shape, an error-handling path, or any other choice the phase
+      being implemented will encode into code): stop and ask the user. Don't
+      guess or silently pick the "obvious" answer — encode their decision back
+      into the TD (and FEAT, if relevant) by checking the box and adding a short
+      "**Resolved <date>**: ..." note with the decision and why, so it isn't
+      re-litigated on a later phase or re-review.
+    - **Already answered elsewhere in the doc** (e.g. the "Open Questions"
+      section asks something the Data Model or API Design section already
+      settles): treat it as resolved — check the box, note where it's answered,
+      move on without asking.
+    - **Out of scope for this phase/feature** (e.g. it concerns a Non-Goal, a
+      future feature, or a later phase): leave it unchecked and don't ask — note
+      it in the step 7 report so the user has visibility, per existing guidance.
+    Do this before step 2, not during implementation — finding out mid-service
+    that a collision-handling or cache-invalidation policy was never decided
+    should not interrupt a half-written file.
+
 2. **Mark the feature as Doing (or track PR progress).**
    - **First PR/Phase:**
      - In the feature file itself, change `Status: Draft` to `Status: Doing`
@@ -232,8 +253,8 @@ a phase identifier for multi-PR features (e.g., `FEAT-001 phase 1`, `FEAT-001-a`
 - **Acceptance criteria mapping**: For multi-phase features, map each AC to the
   phase that implements it. Only check off ACs that are completed in the current
   phase — leave others unchecked until their phase is done.
-- If the technical design has unresolved "Open Questions" that block a design
-  decision (e.g. TD-000's cascade-vs-restrict question), stop and ask the user
-  before implementing that part rather than guessing.
+- Open Questions triage happens up front in step 1b, not mid-implementation —
+  see that step for how to classify blocking vs. out-of-scope vs.
+  already-resolved questions (e.g. TD-000's cascade-vs-restrict question).
 - If something isn't working after 2-3 attempts, stop and explain rather than
   continuing to try random fixes, per `context/ai-interaction.md`.

@@ -2,12 +2,15 @@
 (TD-002 §5, §6) flows.
 """
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
-from shared.storage.exceptions import StorageObjectNotFoundError
+from dedup.hasher import hash_bytes, hash_stream
+from dedup.service import DedupCheckResult
+from shared.storage.exceptions import StorageError, StorageObjectNotFoundError
 from shared.storage.provider import StorageProvider
 from upload.exceptions import (
     EtagMismatchError,
@@ -56,21 +59,37 @@ class ByteStream(Protocol):
         ...
 
 
+class DedupServiceProtocol(Protocol):
+    """Deduplication operations `UploadService` needs from `dedup.service.DedupService`."""
+
+    async def check(self, sha256_hash: str) -> DedupCheckResult:
+        ...
+
+    async def finish(self, sha256_hash: str, storage_key: str, result: DedupCheckResult) -> None:
+        ...
+
+    async def abort(self, sha256_hash: str, result: DedupCheckResult) -> None:
+        ...
+
+
 class UploadService:
     """Orchestrates validation, storage, and metadata persistence for uploads."""
 
     def __init__(
         self,
+        *,
         validator: UploadValidator,
         storage: StorageProvider,
         repository: FileRepositoryProtocol,
         session_repository: UploadSessionRepositoryProtocol,
+        dedup_service: DedupServiceProtocol,
         presigned_url_ttl: int,
     ) -> None:
         self.validator = validator
         self.storage = storage
         self.repository = repository
         self.session_repository = session_repository
+        self.dedup_service = dedup_service
         self.presigned_url_ttl = presigned_url_ttl
 
     async def upload_small_file(
@@ -79,22 +98,47 @@ class UploadService:
         mime_type: str,
         stream: ByteStream,
     ) -> FileMetadata:
-        """Validate, store, and persist a small file (TD-002 §6 mediated flow)."""
+        """Validate, dedup-check, store, and persist a small file (TD-002 §6
+        mediated flow; TD-003 §3, §6 dedup check runs before the storage write).
+        """
         safe_filename = sanitize_filename(filename)
         content = await self._read_bounded(stream)
         self.validator.validate_for_mediated_upload(safe_filename, len(content), mime_type)
 
-        storage_key = self._generate_storage_key(safe_filename)
-        await self.storage.upload(storage_key, content, metadata={"mime_type": mime_type})
+        sha256_hash = hash_bytes(content)
+        dedup_result = await self.dedup_service.check(sha256_hash)
 
-        saved = await self.repository.save(
-            File(
-                storage_key=storage_key,
-                filename=safe_filename,
-                size=len(content),
-                mime_type=mime_type,
-                upload_strategy="mediated",
-            )
+        if dedup_result.existing_storage_key is not None:
+            # Duplicate content: reuse the existing storage key, skip the
+            # storage API call entirely (FR-2).
+            storage_key = dedup_result.existing_storage_key
+        else:
+            storage_key = self._generate_storage_key(safe_filename)
+            try:
+                await self.storage.upload(storage_key, content, metadata={"mime_type": mime_type})
+            except StorageError:
+                # FR-4: lock released on failure too, not just success —
+                # `abort()` releases without caching a storage_key that was
+                # never actually written.
+                await self.dedup_service.abort(sha256_hash, dedup_result)
+                raise
+
+        # FR-5: Redis and DB writes happen in parallel (dual-write), not
+        # sequentially — `dedup_service.finish()` never raises on its own
+        # (cache failures are caught internally and logged), so `save()`'s
+        # exception is the only one that can surface from this gather.
+        _, saved = await asyncio.gather(
+            self.dedup_service.finish(sha256_hash, storage_key, dedup_result),
+            self.repository.save(
+                File(
+                    storage_key=storage_key,
+                    filename=safe_filename,
+                    size=len(content),
+                    mime_type=mime_type,
+                    sha256_hash=sha256_hash,
+                    upload_strategy="mediated",
+                )
+            ),
         )
 
         upload_url = await self.storage.generate_presigned_url(
@@ -107,6 +151,7 @@ class UploadService:
             filename=saved.filename,
             size=saved.size,
             mime_type=saved.mime_type,
+            sha256_hash=saved.sha256_hash,
             upload_url=upload_url,
             created_at=saved.created_at,
         )
@@ -172,21 +217,40 @@ class UploadService:
         if storage_metadata.etag != normalized_etag:
             raise EtagMismatchError(expected=normalized_etag, actual=storage_metadata.etag)
 
-        # Order matters for atomicity: mark_finalized only mutates (see its
-        # docstring) — repository.save()'s commit right after is what actually
-        # persists both this mutation and the new File row together, in one
-        # transaction on the shared per-request AsyncSession.
-        await self.session_repository.mark_finalized(session)
+        # Hash calculated on finalize, not upload (TD-003 §3, §6): the object
+        # already exists in storage by this point (client PUT it directly),
+        # so it's streamed back rather than buffered — mirrors how
+        # `storage.upload` avoids loading multi-hundred-MB bodies into memory.
+        # A dedup hit here just records the hash for future lookups; it does
+        # NOT delete this object or repoint storage_key (TD-003 §3 resolution
+        # 2026-08-14) — this upload keeps its own storage_key.
+        sha256_hash = await hash_stream(self.storage.download(session.storage_key))
+        dedup_result = await self.dedup_service.check(sha256_hash)
 
-        saved = await self.repository.save(
-            File(
-                storage_key=session.storage_key,
-                filename=session.filename,
-                size=storage_metadata.size,
-                mime_type=session.mime_type,
-                upload_strategy="presigned",
-                etag=storage_metadata.etag,
+        async def _persist_finalized_file() -> File:
+            # Order matters for atomicity: mark_finalized only mutates (see
+            # its docstring) — repository.save()'s commit right after is what
+            # actually persists both this mutation and the new File row
+            # together, in one transaction on the shared per-request
+            # AsyncSession. This ordering is independent of dedup_service's
+            # own Redis write below, so the two can run concurrently.
+            await self.session_repository.mark_finalized(session)
+            return await self.repository.save(
+                File(
+                    storage_key=session.storage_key,
+                    filename=session.filename,
+                    size=storage_metadata.size,
+                    mime_type=session.mime_type,
+                    sha256_hash=sha256_hash,
+                    upload_strategy="presigned",
+                    etag=storage_metadata.etag,
+                )
             )
+
+        # FR-5: Redis and DB writes happen in parallel (dual-write).
+        _, saved = await asyncio.gather(
+            self.dedup_service.finish(sha256_hash, session.storage_key, dedup_result),
+            _persist_finalized_file(),
         )
 
         download_url = await self.storage.generate_presigned_url(
@@ -199,6 +263,7 @@ class UploadService:
             filename=saved.filename,
             size=saved.size,
             mime_type=saved.mime_type,
+            sha256_hash=saved.sha256_hash,
             upload_url=download_url,
             created_at=saved.created_at,
         )

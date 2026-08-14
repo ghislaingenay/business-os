@@ -19,6 +19,7 @@ class FileMetadata(BaseModel):
     filename: str
     size: int
     mime_type: str
+    sha256_hash: str | None
     upload_url: str
     created_at: datetime
 
