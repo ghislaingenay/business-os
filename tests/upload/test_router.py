@@ -111,6 +111,7 @@ def test_upload_endpoint_returns_400_for_mime_mismatch(app: FastAPI) -> None:
     body = response.json()
     assert body["error"] == "mime_mismatch"
     assert body["filename"] == "fake.png"
+    assert body["detected_mime"] == "image/jpeg"
 
 
 def test_upload_endpoint_returns_503_when_storage_unavailable(app: FastAPI) -> None:
