@@ -123,8 +123,11 @@ class UploadService:
                 await self.dedup_service.abort(sha256_hash, dedup_result)
                 raise
 
-        # FR-5: Redis and DB writes happen in parallel (dual-write).
-        finish_result, save_result = await asyncio.gather(
+        # FR-5: Redis and DB writes happen in parallel (dual-write), not
+        # sequentially — `dedup_service.finish()` never raises on its own
+        # (cache failures are caught internally and logged), so `save()`'s
+        # exception is the only one that can surface from this gather.
+        _, saved = await asyncio.gather(
             self.dedup_service.finish(sha256_hash, storage_key, dedup_result),
             self.repository.save(
                 File(
@@ -136,21 +139,6 @@ class UploadService:
                     upload_strategy="mediated",
                 )
             ),
-            return_exceptions=True,
-        )
-        if isinstance(finish_result, Exception):
-            raise finish_result
-        if isinstance(save_result, Exception):
-            raise save_result
-        saved = await self.repository.save(
-            File(
-                storage_key=storage_key,
-                filename=safe_filename,
-                size=len(content),
-                mime_type=mime_type,
-                sha256_hash=sha256_hash,
-                upload_strategy="mediated",
-            )
         )
 
         upload_url = await self.storage.generate_presigned_url(

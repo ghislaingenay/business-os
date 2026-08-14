@@ -3,6 +3,7 @@
 import asyncio
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dedup.exceptions import DedupDatabaseUnavailableError
@@ -20,8 +21,6 @@ class DedupRepository:
         """`SELECT storage_key FROM files WHERE sha256_hash = $1 LIMIT 1` (FR-3),
         bounded by `query_timeout_seconds` so a stalled database fails fast.
         """
-        from sqlalchemy.exc import SQLAlchemyError
-
         try:
             result = await asyncio.wait_for(
                 self.session.execute(

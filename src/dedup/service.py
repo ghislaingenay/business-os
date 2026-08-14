@@ -67,13 +67,20 @@ class DedupService:
     async def finish(self, sha256_hash: str, storage_key: str, result: DedupCheckResult) -> None:
         """Populate/renew the cache with `storage_key` and release the lock
         acquired by `check()` (FR-5).
+
+        The lock release runs in `finally` so it happens even if
+        `_populate_cache` raises something unexpected beyond the
+        `CacheUnavailableError` it already handles internally — FR-4 requires
+        the lock released "on failure," not just on the happy path.
         """
         if not self.settings.enabled:
             return
 
-        await self._populate_cache(sha256_hash, storage_key)
-        if result.lock_token is not None:
-            await self._release_lock(sha256_hash, result.lock_token)
+        try:
+            await self._populate_cache(sha256_hash, storage_key)
+        finally:
+            if result.lock_token is not None:
+                await self._release_lock(sha256_hash, result.lock_token)
 
     async def abort(self, sha256_hash: str, result: DedupCheckResult) -> None:
         """Release the lock acquired by `check()` without populating the cache
