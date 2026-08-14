@@ -135,6 +135,7 @@ CREATE TABLE files (
     size BIGINT NOT NULL,                      -- File size in bytes
     mime_type VARCHAR(127) NOT NULL,           -- Content type (image/jpeg, etc.)
     sha256_hash CHAR(64) NULL,                 -- Content hash (populated by FEAT-003)
+    etag VARCHAR(255) NULL,                    -- Storage-verified ETag (presigned path only; see §13)
     upload_strategy VARCHAR(20) NOT NULL,      -- 'mediated' or 'presigned'
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -636,6 +637,15 @@ S3_REGION=us-east-1
 # 13. Open Questions
 
 - [ ] Should we support custom presigned URL TTL via API parameter (e.g., `"ttl": 3600`)?
-- [ ] Do we need to store ETag from finalize in files table for integrity verification?
+- [x] Do we need to store ETag from finalize in files table for integrity verification?
+      Resolved during Phase 3 implementation (2026-08-14): yes — `finalize_large_upload`
+      compares the client-supplied `etag` against `storage.head()`'s reported ETag,
+      raising `EtagMismatchError` (400) on mismatch, and persists the storage-verified
+      value to `files.etag` (see `alembic/versions/001_create_files_table.py`). Not
+      exposed via `FileMetadata`/API responses — FR-5's response shape is unchanged.
 - [ ] Should upload_sessions have a cleanup job (delete finalized sessions >24h old)?
-- [ ] How do we handle client upload failures (incomplete uploads) — automatic retry or manual re-initiate?
+      Not built in Phase 3 (out of its file scope per §9). See
+      `context/plans/upload-sessions-cleanup-job.md` for a sketch.
+- [x] How do we handle client upload failures (incomplete uploads) — automatic retry or manual re-initiate?
+      Already resolved by FEAT-002's Non-Goals: "Automatic retry logic (client
+      responsibility)" — manual re-initiate is the answer, not a new decision.

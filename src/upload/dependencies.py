@@ -9,7 +9,7 @@ from container import container
 from database import get_session
 from shared.storage.provider import StorageProvider
 from upload.config import UploadSettings
-from upload.repository import FileRepository
+from upload.repository import FileRepository, UploadSessionRepository
 from upload.service import UploadService
 from upload.validator import UploadValidator
 
@@ -39,15 +39,23 @@ def get_file_repository(
     return FileRepository(session)
 
 
+def get_upload_session_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> UploadSessionRepository:
+    return UploadSessionRepository(session)
+
+
 def get_upload_service(
     validator: UploadValidator = Depends(get_upload_validator),
     storage: StorageProvider = Depends(get_storage_provider),
     repository: FileRepository = Depends(get_file_repository),
+    session_repository: UploadSessionRepository = Depends(get_upload_session_repository),
     settings: UploadSettings = Depends(get_upload_settings),
 ) -> UploadService:
     return UploadService(
         validator=validator,
         storage=storage,
         repository=repository,
-        download_url_ttl=settings.presigned_url_ttl,
+        session_repository=session_repository,
+        presigned_url_ttl=settings.presigned_url_ttl,
     )

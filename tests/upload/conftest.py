@@ -8,7 +8,7 @@ from moto import mock_aws
 
 from shared.storage.s3_provider import S3StorageProvider
 from upload.config import UploadSettings
-from upload.models import File
+from upload.models import File, UploadSession
 
 _BUCKET = "test-uploads"
 _REGION = "us-east-1"
@@ -50,6 +50,37 @@ class FakeFileRepository:
 @pytest.fixture()
 def fake_file_repository() -> FakeFileRepository:
     return FakeFileRepository()
+
+
+class FakeUploadSessionRepository:
+    """In-memory `UploadSessionRepositoryProtocol` (see `upload.service`) for tests.
+
+    Mimics the `upload_id`/`created_at` values Postgres would assign via
+    `server_default` on commit, since there's no DB here to do it.
+    """
+
+    def __init__(self) -> None:
+        self.saved: list[UploadSession] = []
+
+    async def save(self, upload_session: UploadSession) -> UploadSession:
+        upload_session.upload_id = uuid.uuid4()
+        upload_session.created_at = datetime.now(UTC)
+        self.saved.append(upload_session)
+        return upload_session
+
+    async def find_active_by_id(self, upload_id: uuid.UUID) -> UploadSession | None:
+        for session in self.saved:
+            if session.upload_id == upload_id and not session.finalized:
+                return session
+        return None
+
+    async def mark_finalized(self, upload_session: UploadSession) -> None:
+        upload_session.finalized = True
+
+
+@pytest.fixture()
+def fake_upload_session_repository() -> FakeUploadSessionRepository:
+    return FakeUploadSessionRepository()
 
 
 @pytest.fixture()

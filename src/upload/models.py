@@ -35,6 +35,7 @@ class File(Base):
     size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(127), nullable=False)
     sha256_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
     upload_strategy: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
