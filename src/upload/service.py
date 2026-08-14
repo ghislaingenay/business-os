@@ -171,6 +171,12 @@ class UploadService:
         if storage_metadata.etag != etag:
             raise EtagMismatchError(expected=etag, actual=storage_metadata.etag)
 
+        # Order matters for atomicity: mark_finalized only mutates (see its
+        # docstring) — repository.save()'s commit right after is what actually
+        # persists both this mutation and the new File row together, in one
+        # transaction on the shared per-request AsyncSession.
+        await self.session_repository.mark_finalized(session)
+
         saved = await self.repository.save(
             File(
                 storage_key=session.storage_key,
@@ -181,7 +187,6 @@ class UploadService:
                 etag=storage_metadata.etag,
             )
         )
-        await self.session_repository.mark_finalized(session)
 
         download_url = await self.storage.generate_presigned_url(
             saved.storage_key, "GET", self.presigned_url_ttl

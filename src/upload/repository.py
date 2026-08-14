@@ -50,5 +50,16 @@ class UploadSessionRepository:
         return result.scalar_one_or_none()
 
     async def mark_finalized(self, upload_session: UploadSession) -> None:
+        """Mark the session finalized in-memory — deliberately does NOT commit.
+
+        `UploadService.finalize_large_upload` calls this immediately before
+        `FileRepository.save()`, relying on that call's single `commit()` to
+        flush both this mutation and the new `File` row together. Both
+        repositories share one `AsyncSession` per request (FastAPI's
+        dependency caching), but sharing a session alone doesn't make two
+        separate `commit()` calls atomic — each `commit()` ends its own
+        transaction. Committing here too would let a crash between the two
+        commits leave `finalized=False` with the `File` row already persisted,
+        so a client retry could create a duplicate `File` for the same upload.
+        """
         upload_session.finalized = True
-        await self.session.commit()

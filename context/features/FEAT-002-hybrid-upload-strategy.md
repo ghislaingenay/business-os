@@ -118,7 +118,10 @@ So that **I can publish video content without overwhelming the API server**
 - [ ] Returns presigned upload URL with 15-minute TTL
 - [ ] Returns upload_id for finalization tracking
 - [ ] Validates file type is supported
-- [ ] Applies rate limiting per user
+- [ ] Applies rate limiting per user — **deferred to FEAT-006** (decided
+      2026-08-14, during Phase 3 review): no auth/user-identity infrastructure
+      exists yet in this codebase for rate limits to key on (see
+      `context/plans/upload-endpoint-authentication.md`).
 
 ### FR-3: Large File Upload Finalization
 
@@ -129,8 +132,15 @@ So that **I can publish video content without overwhelming the API server**
 - [ ] Accepts JSON body: `{"upload_id": "...", "etag": "..."}`
 - [ ] Verifies file exists in storage at presigned location
 - [ ] Returns complete file metadata matching small file response format
-- [ ] Returns `404 Not Found` if upload_id invalid or expired
+- [ ] Returns `404 Not Found` if upload_id is unknown or already finalized
+- [ ] Returns `410 Gone` if upload_id is valid but its presigned URL expired
+      (split out from the original "invalid or expired" wording during Phase 3
+      implementation, 2026-08-14 — see TD-002 §5/§7, which already documented
+      these as two separate response shapes)
 - [ ] Returns `400 Bad Request` if file not found in storage (upload incomplete)
+- [ ] Returns `400 Bad Request` if client-supplied `etag` doesn't match storage's
+      reported ETag (resolves TD-002 §13's ETag open question, decided during
+      Phase 3 implementation — see `EtagMismatchError`)
 
 ### FR-4: Size-Based Routing Validation
 
