@@ -7,7 +7,7 @@ from upload.exceptions import (
     InvalidFileTypeError,
     MimeMismatchError,
 )
-from upload.validator import UploadValidator
+from upload.validator import UploadValidator, sanitize_filename
 
 _MAX_SMALL_FILE_SIZE = 2_097_152
 
@@ -79,3 +79,36 @@ def test_accepts_matching_extension_and_mime(
     validator: UploadValidator, filename: str, mime_type: str
 ) -> None:
     validator.validate_for_mediated_upload(filename, 1024, mime_type)
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("profile.jpg", "profile.jpg"),
+        ("../../etc/passwd.jpg", "passwd.jpg"),
+        # `\` isn't a path separator on POSIX, so it's stripped as a disallowed
+        # character rather than treated as a directory boundary — still no `/`
+        # or `..` survives, so no traversal is possible, just a mangled name.
+        ("..\\..\\windows\\config.jpg", "windowsconfig.jpg"),
+        ("/etc/passwd.jpg", "passwd.jpg"),
+        ("my photo (1).jpg", "my photo (1).jpg".replace("(", "").replace(")", "")),
+        ("café.jpg", "cafe.jpg"),
+    ],
+)
+def test_sanitize_filename_strips_traversal_and_unsafe_characters(
+    filename: str, expected: str
+) -> None:
+    assert sanitize_filename(filename) == expected
+
+
+@pytest.mark.parametrize("filename", ["", ".", "..", "../..", "***", "/"])
+def test_sanitize_filename_falls_back_when_result_is_empty(filename: str) -> None:
+    assert sanitize_filename(filename) == "upload"
+
+
+def test_sanitize_filename_truncates_long_names() -> None:
+    long_name = ("a" * 300) + ".jpg"
+
+    result = sanitize_filename(long_name)
+
+    assert len(result) == 200

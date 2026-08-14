@@ -28,3 +28,6 @@ class Container(containers.DeclarativeContainer):
     db_session_factory = providers.Singleton(create_session_factory, engine=db_engine)
 
     upload_settings = providers.Singleton(UploadSettings)
+
+
+container = Container()
