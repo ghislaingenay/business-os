@@ -3,7 +3,7 @@
 Status: Doing
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-13 (Phase 1 complete)
+Last Updated: 2026-08-14 (Phase 2 complete)
 
 Technical Design: [TD-002 - Hybrid Upload Strategy](../technical-designs/TD-002-hybrid-upload-strategy.md)
 
@@ -12,7 +12,7 @@ Technical Design: [TD-002 - Hybrid Upload Strategy](../technical-designs/TD-002-
 ## PR Progress
 
 - [x] Phase 1: Upload Foundation (branch: feature/hybrid-upload-a)
-- [ ] Phase 2: Small File Upload - Mediated (branch: feature/hybrid-upload-b)
+- [x] Phase 2: Small File Upload - Mediated (branch: feature/hybrid-upload-b)
 - [ ] Phase 3: Large File Upload - Presigned URLs (branch: feature/hybrid-upload-c)
 
 ---
@@ -101,11 +101,11 @@ So that **I can publish video content without overwhelming the API server**
 
 #### Acceptance Criteria
 
-- [ ] Accepts `Content-Type: multipart/form-data` with `file` field
-- [ ] Returns `413 Payload Too Large` if file >xMB
-- [ ] Returns file metadata (file_id, storage_key, size, mime_type, upload_url)
-- [ ] Validates file type against allowlist (configurable)
-- [ ] Validates MIME type matches file extension
+- [x] Accepts `Content-Type: multipart/form-data` with `file` field
+- [x] Returns `413 Payload Too Large` if file >xMB
+- [x] Returns file metadata (file_id, storage_key, size, mime_type, upload_url)
+- [x] Validates file type against allowlist (configurable)
+- [x] Validates MIME type matches file extension
 
 ### FR-2: Large File Upload Initiation
 
@@ -138,10 +138,10 @@ So that **I can publish video content without overwhelming the API server**
 
 #### Acceptance Criteria
 
-- [ ] `/upload` rejects files >xMB with clear error message
+- [x] `/upload` rejects files >xMB with clear error message
 - [ ] `/upload/initiate` rejects requests for files ≤2MB with guidance to use `/upload`
-- [ ] Error responses include recommended endpoint for size
-- [ ] Size validation occurs before any storage operations
+- [x] Error responses include recommended endpoint for size
+- [x] Size validation occurs before any storage operations
 
 ### FR-5: Consistent Response Format
 
@@ -205,13 +205,13 @@ So that **I can publish video content without overwhelming the API server**
 
 **Deliverables**:
 
-- [ ] `POST /upload` FastAPI endpoint (multipart/form-data handler)
-- [ ] `UploadService.upload_small_file()` method
-- [ ] Integration with storage provider (via FEAT-001 interface)
-- [ ] File metadata persistence to database
-- [ ] Error handling (size exceeded, invalid type, storage failure)
-- [ ] Unit tests + integration tests (with MinIO)
-- [ ] OpenAPI schema documentation
+- [x] `POST /upload` FastAPI endpoint (multipart/form-data handler)
+- [x] `UploadService.upload_small_file()` method
+- [x] Integration with storage provider (via FEAT-001 interface)
+- [x] File metadata persistence to database
+- [x] Error handling (size exceeded, invalid type, storage failure)
+- [x] Unit tests + integration tests (moto-backed S3, matching this repo's existing convention over a real MinIO container)
+- [x] OpenAPI schema documentation
 
 **Estimated Size**: ~6 files, ~400 LOC
 
