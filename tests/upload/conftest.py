@@ -6,6 +6,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
+from dedup.service import DedupCheckResult
 from shared.storage.s3_provider import S3StorageProvider
 from upload.config import UploadSettings
 from upload.models import File, UploadSession
@@ -97,3 +98,34 @@ def upload_settings() -> UploadSettings:
         presigned_url_ttl=900,
         allowed_file_types=("image/jpeg", "image/png", "video/mp4"),
     )
+
+
+class FakeDedupService:
+    """Controllable `DedupService` double (see `upload.service`) for tests
+    that need to control dedup's hit/miss decision without exercising its
+    own cache/lock/DB-fallback logic — that's covered by
+    tests/dedup/test_service.py, so it isn't re-tested here.
+    """
+
+    def __init__(self, existing_storage_key: str | None = None) -> None:
+        self.existing_storage_key = existing_storage_key
+        self.check_calls: list[str] = []
+        self.finish_calls: list[tuple[str, str]] = []
+        self.abort_calls: list[str] = []
+
+    async def check(self, sha256_hash: str) -> DedupCheckResult:
+        self.check_calls.append(sha256_hash)
+        return DedupCheckResult(
+            existing_storage_key=self.existing_storage_key, lock_token="fake-lock-token"
+        )
+
+    async def finish(self, sha256_hash: str, storage_key: str, result: DedupCheckResult) -> None:
+        self.finish_calls.append((sha256_hash, storage_key))
+
+    async def abort(self, sha256_hash: str, result: DedupCheckResult) -> None:
+        self.abort_calls.append(sha256_hash)
+
+
+@pytest.fixture()
+def fake_dedup_service() -> FakeDedupService:
+    return FakeDedupService()

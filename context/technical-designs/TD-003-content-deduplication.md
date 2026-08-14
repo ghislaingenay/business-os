@@ -107,6 +107,19 @@ Check Redis cache: dedup:hash:{hash}
 
 **Changes**: Integrate dedup check before storage upload (call `dedup_service.check_or_upload()`)
 
+**Resolved 2026-08-14 — presigned-path scope**: this integration point (check
+*before* the storage write) only applies to the mediated path
+(`upload_small_file`), since that's the only path where the server performs
+the storage write itself. On `finalize_large_upload` (presigned path), the
+client has already PUT bytes directly to storage before finalize runs, so
+there's no "before upload" moment to intercept server-side. FR-1 still
+requires computing and persisting `sha256_hash` on finalize; this
+implementation does so and populates the dedup cache/DB from it (so *future*
+uploads of the same content can dedup), but does not delete the just-uploaded
+object or repoint it at a matching existing `storage_key` — that delete-and-
+reuse step isn't described anywhere in this section or the sequence flows
+below, and was confirmed out of scope for this PR rather than assumed.
+
 ---
 
 # 4. Data Model
@@ -443,3 +456,33 @@ SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'files' AND indexna
       §10's rationale for choosing SHA-256 (collision resistance ~2^-128, cryptographically
       infeasible) and preserves the <100ms/<200ms latency targets in FR-2/FR-3 — a byte
       comparison would require fetching the existing object from storage on every dedup hit.
+
+---
+
+# 14. `review-technical-design` Findings (2026-08-14)
+
+An independent verification pass (see `implement-feature` skill step 6) found
+no Blocking issues; build/lint/tests were clean (154/154 tests, 94.6%
+coverage). Five Should-fix findings, disposition below:
+
+- **FR-4 AC4 (lock released on failure)** — Fixed. `upload/service.py`'s
+  `upload_small_file` now wraps `storage.upload()` in a `try/except
+  StorageError`, calling the new `DedupService.abort()` (releases the lock
+  without populating the cache with a `storage_key` that was never written)
+  before re-raising. Covered by
+  `test_upload_small_file_aborts_dedup_lock_on_storage_failure` and
+  `test_abort_releases_lock_without_populating_cache`.
+- **FR-5 AC1 (Redis + DB writes in parallel)** — Fixed. Both
+  `upload_small_file` and `finalize_large_upload` now run
+  `dedup_service.finish()` concurrently with the `File` persistence step via
+  `asyncio.gather`, instead of sequentially.
+- **FR-6 AC1 (structured log missing `file_size`; no JSON formatter)** —
+  Deferred to FEAT-007 (Observability), which owns structured/JSON logging
+  project-wide. See FEAT-007 §4 FR-3's "Known gap carried over from
+  FEAT-003" note.
+- **FR-2 AC5 / FR-6 naming mismatch (`dedup_check_result` vs `dedup_check`;
+  no unified "error" case)** — Left as-is per explicit decision; not fixed
+  in this PR.
+- **Data model: `CHAR(64)` (TD) vs `VARCHAR(64)`/`String(64)` (actual)** —
+  Left as-is per explicit decision; not fixed in this PR. The column already
+  existed in migration 001 (from FEAT-002) before FEAT-003 began.

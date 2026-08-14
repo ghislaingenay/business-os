@@ -3,6 +3,9 @@
 from dependency_injector import containers, providers
 
 from database import DatabaseSettings, create_engine, create_session_factory
+from dedup.config import DedupSettings
+from shared.cache.config import CacheSettings
+from shared.cache.factory import CacheProviderFactory
 from shared.storage.config import StorageSettings
 from shared.storage.factory import StorageProviderFactory
 from upload.config import UploadSettings
@@ -19,6 +22,15 @@ class Container(containers.DeclarativeContainer):
         settings=storage_settings,
     )
 
+    cache_settings = providers.Singleton(CacheSettings)
+
+    # Same eager-init note as storage_provider: call `container.cache_provider()`
+    # during startup/lifespan so a bad REDIS_URL fails fast instead of on first request.
+    cache_provider = providers.Singleton(
+        CacheProviderFactory.create,
+        settings=cache_settings,
+    )
+
     database_settings = providers.Singleton(DatabaseSettings)
 
     # Same eager-init note as storage_provider: call `container.db_engine()` during
@@ -28,6 +40,8 @@ class Container(containers.DeclarativeContainer):
     db_session_factory = providers.Singleton(create_session_factory, engine=db_engine)
 
     upload_settings = providers.Singleton(UploadSettings)
+
+    dedup_settings = providers.Singleton(DedupSettings)
 
 
 container = Container()

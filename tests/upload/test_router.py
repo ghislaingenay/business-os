@@ -26,7 +26,7 @@ from upload.schemas import FileMetadata, UploadSessionMetadata
 from upload.service import UploadService
 from upload.validator import UploadValidator
 
-from .conftest import FakeFileRepository, FakeUploadSessionRepository
+from .conftest import FakeDedupService, FakeFileRepository, FakeUploadSessionRepository
 
 _MAX_SMALL_FILE_SIZE = 2_097_152
 _OVERSIZED_MEDIATED_FILE_SIZE = 3_000_000
@@ -64,6 +64,7 @@ def test_upload_endpoint_returns_metadata_on_success(app: FastAPI) -> None:
         filename="profile.jpg",
         size=4,
         mime_type="image/jpeg",
+        sha256_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         upload_url="https://storage.example.com/originals/2026/08/13/abc.jpg",
         created_at=datetime.now(UTC),
     )
@@ -160,6 +161,7 @@ def test_upload_endpoint_end_to_end_with_real_storage(
         storage=s3_storage_provider,  # type: ignore[arg-type]
         repository=fake_file_repository,
         session_repository=fake_upload_session_repository,
+        dedup_service=FakeDedupService(),
         presigned_url_ttl=upload_settings.presigned_url_ttl,
     )
     app.dependency_overrides[get_upload_service] = lambda: service
@@ -247,6 +249,7 @@ def test_finalize_endpoint_returns_metadata_on_success(app: FastAPI) -> None:
         filename="video.mp4",
         size=_LARGE_FILE_SIZE,
         mime_type=_VIDEO_MIME_TYPE,
+        sha256_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         upload_url="https://storage.example.com/originals/2026/08/14/abc.mp4",
         created_at=datetime.now(UTC),
     )
@@ -351,6 +354,7 @@ async def test_large_upload_initiate_then_finalize_end_to_end(
         storage=s3_storage_provider,
         repository=fake_file_repository,
         session_repository=fake_upload_session_repository,
+        dedup_service=FakeDedupService(),
         presigned_url_ttl=upload_settings.presigned_url_ttl,
     )
     app.dependency_overrides[get_upload_service] = lambda: service

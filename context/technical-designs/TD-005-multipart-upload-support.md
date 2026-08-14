@@ -131,6 +131,7 @@ ON multipart_sessions(expires_at) WHERE NOT finalized;
 ```json
 {
   "upload_id": "a1b2c3d4...",
+  "storage_key": "originals/2026/08/11/a1b2c3d4.mp4",
   "total_parts": 50,
   "completed_parts": [1, 2, 3, 5, 7],
   "missing_parts": [4, 6, 8, 9, ...],

@@ -109,6 +109,22 @@ So that **I can justify infrastructure investments**
 - [ ] Queryable: Log aggregation tool extracts metrics via JSON field matching
 - [ ] Example: `{"event": "dedup_check", "result": "hit", "latency_ms": 45, "hash": "abc..."}`
 
+**Known gap carried over from FEAT-003** (flagged during that feature's
+`review-technical-design` pass, 2026-08-14): `DedupService._find_existing`
+(`src/dedup/service.py`) already logs a `dedup_check` event via stdlib
+`logging` with `result`/`hash`/`source` fields, but (1) it has no `file_size`
+field — `DedupService.check()`'s interface never receives a file size, so
+FEAT-003 couldn't add it without a signature change, and (2) there's no JSON
+log formatter configured anywhere in the app yet, so `extra={...}` currently
+produces separate `LogRecord` attributes, not the literal JSON body FR-3's
+own example shows. When FEAT-007's `structlog` config lands, either thread
+`file_size` through `DedupService.check()`/`_find_existing()` so the event
+carries it, or accept the gap and document why. The DB-unavailable path also
+emits a separate `database_unavailable` event rather than a `dedup_check`
+event with `result: "error"` — worth deciding whether FR-3's "result" field
+should unify hit/miss/error into one event family per this feature's own
+FR-1 schema, or keep error logging on its own event name.
+
 ### FR-4: Error Tracking
 
 **Requirement**: Log all errors with full context and stack traces

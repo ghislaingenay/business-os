@@ -14,6 +14,7 @@ from upload.router import router as upload_router
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Eager singleton init: fail fast on bad config instead of on first request.
     container.storage_provider()
+    container.cache_provider()
     container.db_engine()
     yield
 
