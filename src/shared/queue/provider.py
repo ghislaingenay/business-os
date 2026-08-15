@@ -20,4 +20,4 @@ def create_job_queue(redis_url: str) -> ArqRedis:
     and cheap.
     """
     pool = redis_asyncio.from_url(redis_url)
-    return ArqRedis(pool.connection_pool)
+    return ArqRedis(connection_pool=pool.connection_pool)
