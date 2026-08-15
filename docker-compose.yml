@@ -44,6 +44,24 @@ services:
       timeout: 5s
       retries: 5
 
+  worker:
+    build: .
+    command: arq worker.WorkerSettings
+    environment:
+      DATABASE_URL: postgresql+asyncpg://business_os:business_os@postgres:5432/business_os
+      STORAGE_PROVIDER: minio
+      S3_BUCKET: uploads
+      S3_REGION: us-east-1
+      S3_ENDPOINT: http://minio:9000
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   minio-data:
   postgres-data:

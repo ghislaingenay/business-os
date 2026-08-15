@@ -129,3 +129,19 @@ class FakeDedupService:
 @pytest.fixture()
 def fake_dedup_service() -> FakeDedupService:
     return FakeDedupService()
+
+
+class FakeJobQueue:
+    """In-memory `JobQueueProtocol` (see `upload.service`) for tests."""
+
+    def __init__(self) -> None:
+        self.enqueued: list[tuple[str, tuple[object, ...]]] = []
+
+    async def enqueue_job(self, function: str, *args: object) -> object | None:
+        self.enqueued.append((function, args))
+        return None
+
+
+@pytest.fixture()
+def fake_job_queue() -> FakeJobQueue:
+    return FakeJobQueue()

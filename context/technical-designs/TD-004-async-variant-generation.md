@@ -1,9 +1,9 @@
 # TD-004: Async Variant Generation
 
-Status: Not Started
+Status: Doing
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-11
+Last Updated: 2026-08-15
 
 Feature Spec: [FEAT-004 - Async Variant Generation](../features/FEAT-004-async-variant-generation.md)
 
@@ -60,10 +60,15 @@ Upload Complete → Enqueue Job → arq Worker
 
 ```sql
 ALTER TABLE files
-ADD COLUMN webp_url VARCHAR(512) NULL,
+ADD COLUMN web_optimized_url VARCHAR(512) NULL,
 ADD COLUMN thumbnail_url VARCHAR(512) NULL,
 ADD COLUMN variants_processed_at TIMESTAMP NULL;
 ```
+
+**2026-08-15**: `webp_url` renamed to `web_optimized_url` per explicit user
+instruction — same WebP variant, column name decoupled from the specific
+codec in case the "web-optimized" format choice changes later. All
+references below (`webp_key`, service/repository/schema code) use this name.
 
 ---
 
@@ -112,10 +117,18 @@ async def generate_variants(ctx, file_id: str, storage_key: str):
 
 # 7. Testing Strategy
 
-- [ ] Unit tests: Pillow processing (WebP, thumbnail)
-- [ ] Integration tests: End-to-end with worker (upload → variants appear in storage)
-- [ ] Retry tests: Simulate storage failure, verify 3 retries
-- [ ] Performance tests: Measure p95 latency for 5MB images
+- [x] Unit tests: Pillow processing (WebP, thumbnail) — `tests/shared/image/test_processor.py`
+- [x] Integration tests: End-to-end with worker (upload → variants appear in storage)
+      — split across `tests/variants/test_service.py` (service → real S3 via
+      moto) and `tests/worker/test_tasks.py` (arq task boundary); no test hits
+      a live Redis/arq worker process, matching this repo's existing
+      convention of not exercising live infra anywhere in the suite (see
+      `tests/test_database.py`'s docstring)
+- [x] Retry tests: Simulate storage failure, verify 3 retries — `tests/worker/test_tasks.py`
+      (parametrized over the 1s/5s/25s backoff schedule, plus exhaustion)
+- [ ] Performance tests: Measure p95 latency for 5MB images — not implemented;
+      no other feature in this repo has an automated perf-test harness either,
+      so this is left to manual/production observation, consistent with existing practice
 
 ---
 
@@ -131,13 +144,10 @@ class WorkerSettings:
     job_timeout = 60  # seconds
 ```
 
-**Docker Compose**:
-
-```yaml
-worker:
-  build: .
-  command: arq app.worker.WorkerSettings
-  environment:
-    - REDIS_URL=redis://redis:6379
-    - STORAGE_PROVIDER=s3
-```
+**Docker Compose**: implemented as the `worker` service in `docker-compose.yml`
+(env vars point at the compose network's `postgres`/`minio`/`redis` hostnames
+rather than `localhost`, and `command` is `arq worker.WorkerSettings` — this
+repo's package is `worker`, not `app.worker`). Required adding a top-level
+`Dockerfile`, since the app had none before this feature — it previously only
+ran locally via `uvicorn`/`make run`. For local (non-Docker) dev, `make worker`
+runs the same `arq worker.WorkerSettings` command directly against `.env`.

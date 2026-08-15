@@ -37,6 +37,9 @@ class File(Base):
     sha256_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
     upload_strategy: Mapped[str] = mapped_column(String(20), nullable=False)
+    web_optimized_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    variants_processed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
 

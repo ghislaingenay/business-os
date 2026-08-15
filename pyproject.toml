@@ -25,6 +25,8 @@ dependencies = [
     "python-multipart>=0.0.6",
     "boto3>=1.43.70",
     "redis>=8.1.0",
+    "arq>=0.26.0",
+    "pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +44,13 @@ dev = [
 [build-system]
 requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.uv]
+# arq's published `redis<6` cap predates redis-py 6/7/8; it only calls basic
+# commands (get/set/eval/pipelines) that are stable across those majors, so
+# the cap is relaxed here rather than downgrading the project's own
+# `redis>=8.1.0` (needed by shared/cache/redis_provider.py for dedup).
+override-dependencies = ["redis>=8.1.0"]
 
 [tool.ruff]
 # Set the maximum line length

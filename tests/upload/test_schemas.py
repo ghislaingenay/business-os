@@ -22,6 +22,8 @@ def test_file_metadata_round_trips_expected_fields() -> None:
         mime_type="image/jpeg",
         sha256_hash=_SHA256_HASH,
         upload_url="https://cdn.example.com/originals/2026/08/11/file.jpg",
+        web_optimized_url=None,
+        thumbnail_url=None,
         created_at=_CREATED_AT,
     )
 
@@ -41,6 +43,8 @@ def test_file_metadata_allows_null_sha256_hash() -> None:
         mime_type="image/jpeg",
         sha256_hash=None,
         upload_url="https://cdn.example.com/originals/2026/08/11/file.jpg",
+        web_optimized_url=None,
+        thumbnail_url=None,
         created_at=_CREATED_AT,
     )
 
@@ -56,6 +60,8 @@ def test_file_metadata_parses_iso8601_created_at_string() -> None:
         mime_type="image/jpeg",
         sha256_hash=_SHA256_HASH,
         upload_url="https://cdn.example.com/originals/2026/08/11/file.jpg",
+        web_optimized_url=None,
+        thumbnail_url=None,
         created_at="2026-08-11T10:30:00Z",
     )
 

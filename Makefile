@@ -1,4 +1,4 @@
-.PHONY: help install install-uv dev test test-cov lint lint-fix format type-check pre-commit clean run migrate migration check
+.PHONY: help install install-uv dev test test-cov lint lint-fix format type-check pre-commit clean run worker migrate migration check
 
 # Default target
 help:
@@ -13,6 +13,7 @@ help:
 	@echo "  make pre-commit     - Run all pre-commit hooks"
 	@echo "  make clean          - Clean cache and temporary files"
 	@echo "  make run            - Run the FastAPI application"
+	@echo "  make worker         - Run the arq variant-generation worker"
 	@echo "  make migrate        - Run database migrations"
 
 # Install dependencies using uv (required)
@@ -73,6 +74,10 @@ clean:
 # Run the FastAPI application
 run:
 	uvicorn src.main:app --reload
+
+# Run the arq variant-generation worker (TD-004 §8)
+worker:
+	PYTHONPATH=src arq worker.WorkerSettings
 
 # Run database migrations
 migrate:
