@@ -41,4 +41,3 @@ def _open(image_bytes: bytes) -> Image.Image:
         return image
     except UnidentifiedImageError as exc:
         raise ImageDecodeError(f"Could not decode image: {exc}") from exc
-    
