@@ -96,8 +96,12 @@ class VariantService:
             ) from exc
 
     async def _download(self, storage_key: str) -> bytes:
-        chunks = [chunk async for chunk in self.storage.download(storage_key)]
-        return b"".join(chunks)
+        # large images can cause high peak memory.
+        # Accumulate into a single bytearray to reduce peak RAM.
+        buffer = bytearray()
+        async for chunk in self.storage.download(storage_key):
+            buffer.extend(chunk)
+        return bytes(buffer)
 
     @staticmethod
     def _variant_key(storage_key: str, *, prefix: str, suffix: str, ext: str) -> str:
