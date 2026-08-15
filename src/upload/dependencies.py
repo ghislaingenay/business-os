@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 
+from arq.connections import ArqRedis
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +33,10 @@ def get_storage_provider() -> StorageProvider:
 
 def get_cache_provider() -> CacheProvider:
     return container.cache_provider()
+
+
+def get_job_queue() -> ArqRedis:
+    return container.job_queue()
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:
@@ -79,6 +84,7 @@ def get_upload_service(
     repository: FileRepository = Depends(get_file_repository),
     session_repository: UploadSessionRepository = Depends(get_upload_session_repository),
     dedup_service: DedupService = Depends(get_dedup_service),
+    job_queue: ArqRedis = Depends(get_job_queue),
     settings: UploadSettings = Depends(get_upload_settings),
 ) -> UploadService:
     return UploadService(
@@ -87,5 +93,6 @@ def get_upload_service(
         repository=repository,
         session_repository=session_repository,
         dedup_service=dedup_service,
+        job_queue=job_queue,
         presigned_url_ttl=settings.presigned_url_ttl,
     )

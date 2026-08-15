@@ -1,9 +1,9 @@
 # FEAT-004: Async Variant Generation
 
-Status: Not Started
+Status: Doing
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-11
+Last Updated: 2026-08-15
 
 Technical Design: [TD-004 - Async Variant Generation](../technical-designs/TD-004-async-variant-generation.md)
 
@@ -85,10 +85,10 @@ So that **the gallery page loads in <1 second even with 100 images**
 
 #### Acceptance Criteria
 
-- [ ] Generated for all image uploads (JPEG, PNG, GIF)
-- [ ] Stored with key pattern: `webp/{YYYY}/{MM}/{DD}/{UUID}.webp`
-- [ ] Quality setting: 85 (balance size vs. visual quality)
-- [ ] Original aspect ratio preserved
+- [x] Generated for all image uploads (JPEG, PNG, GIF)
+- [x] Stored with key pattern: `webp/{YYYY}/{MM}/{DD}/{UUID}.webp`
+- [x] Quality setting: 85 (balance size vs. visual quality)
+- [x] Original aspect ratio preserved
 
 ### FR-2: Thumbnail Generation
 
@@ -96,10 +96,10 @@ So that **the gallery page loads in <1 second even with 100 images**
 
 #### Acceptance Criteria
 
-- [ ] Generated for all image uploads
-- [ ] Stored with key pattern: `thumbnails/{YYYY}/{MM}/{DD}/{UUID}_thumb.jpg`
-- [ ] Size: 256x256 max (preserve aspect ratio, letterbox if needed)
-- [ ] Quality: 80 (acceptable for small previews)
+- [x] Generated for all image uploads
+- [x] Stored with key pattern: `thumbnails/{YYYY}/{MM}/{DD}/{UUID}_thumb.jpg`
+- [x] Size: 256x256 max (preserve aspect ratio, letterbox if needed)
+- [x] Quality: 80 (acceptable for small previews)
 
 ### FR-3: Job Queueing
 
@@ -107,10 +107,13 @@ So that **the gallery page loads in <1 second even with 100 images**
 
 #### Acceptance Criteria
 
-- [ ] Job payload: `{"file_id": "...", "storage_key": "...", "mime_type": "..."}`
-- [ ] Queue: Redis-backed arq queue
-- [ ] Job timeout: 60 seconds per job
-- [ ] Retry policy: 3 attempts with exponential backoff (1s, 5s, 25s)
+- [x] Job payload: `{"file_id": "...", "storage_key": "...", "mime_type": "..."}`
+      (passed as arq's positional job args, not a literal dict — arq jobs
+      don't take a payload object, they take function arguments; carries the
+      same three fields)
+- [x] Queue: Redis-backed arq queue
+- [x] Job timeout: 60 seconds per job
+- [x] Retry policy: 3 attempts with exponential backoff (1s, 5s, 25s)
 
 ### FR-4: Metadata Update
 
@@ -118,9 +121,9 @@ So that **the gallery page loads in <1 second even with 100 images**
 
 #### Acceptance Criteria
 
-- [ ] Database fields: `webp_url`, `thumbnail_url`
-- [ ] Atomic update (both variants or neither)
-- [ ] API response includes variant URLs if available
+- [x] Database fields: `web_optimized_url` (renamed from `webp_url`, see TD-004 §4), `thumbnail_url`
+- [x] Atomic update (both variants or neither)
+- [x] API response includes variant URLs if available
 
 ---
 
@@ -149,20 +152,52 @@ So that **the gallery page loads in <1 second even with 100 images**
 
 **Deliverables**:
 
-- [ ] `src/worker/tasks.py` (variant generation task)
-- [ ] `src/worker/__init__.py` (arq configuration)
-- [ ] `src/image/processor.py` (Pillow WebP/thumbnail logic)
-- [ ] Update `src/upload/service.py` (enqueue job after upload)
-- [ ] Add `webp_url`, `thumbnail_url` columns to `files` table
-- [ ] Integration tests (end-to-end with worker)
-- [ ] Docker Compose worker service configuration
+- [x] `src/worker/tasks.py` (variant generation task)
+- [x] `src/worker/__init__.py` (arq configuration)
+- [x] `src/shared/image/processor.py` (Pillow WebP/thumbnail logic — placed
+      under `shared/` rather than a top-level `src/image/`, since it's a
+      business-agnostic technical capability per coding-standards.md §12, not
+      a domain)
+- [x] `src/variants/` domain (`service.py`, `repository.py`, `config.py`,
+      `exceptions.py`) — orchestrates download → generate → upload → persist;
+      not called out by name in TD-004 §3 but required to keep business logic
+      out of the arq task boundary per coding-standards.md's layering rules
+- [x] `src/shared/queue/provider.py` (arq/Redis job-queue client)
+- [x] Update `src/upload/service.py` (enqueue job after both mediated and
+      presigned upload paths complete)
+- [x] Add `web_optimized_url` (renamed from `webp_url`), `thumbnail_url`,
+      `variants_processed_at` columns to `files` table
+      (`alembic/versions/003_add_variant_columns_to_files.py`)
+- [x] Unit/service-level tests for image processing, variant service, arq
+      task retry/backoff, and job enqueueing (mocked storage/DB per this
+      repo's existing test convention — no live-infra integration test, same
+      as every other domain's test suite)
+- [x] Docker Compose worker service configuration (`docker-compose.yml`) —
+      required adding a `Dockerfile` too, since the app had none before this
+      feature (it previously only ran locally via `uvicorn`); a `make worker`
+      target was also added for local (non-Docker) dev
 
-**Estimated Size**: ~8 files, ~400 LOC
+**Estimated Size**: ~8 files, ~400 LOC (actual: ~20 files — the domain/DI
+wiring the TD's file list didn't spell out, e.g. `container.py`,
+`upload/dependencies.py`, `upload/schemas.py`, plus the `variants` domain's
+own repository/config/exceptions files)
 
 ---
 
 # 8. Open Questions
 
 - [ ] Should we support custom thumbnail sizes (e.g., 128x128 for avatars)?
+      Out of scope for this implementation — Non-Goals explicitly states
+      "Custom variant sizes per request (fixed sizes only)". Revisit only if
+      a future feature requests per-request sizing.
 - [ ] Do we generate variants for uploaded videos (extract thumbnail frame)?
-- [ ] Should we skip variant generation for already-optimized WebP uploads?
+      Out of scope for this implementation — Non-Goals explicitly states
+      "Video transcoding (Phase 2 feature)". The worker skips any file whose
+      `mime_type` isn't one of FR-1's listed image types.
+- [x] Should we skip variant generation for already-optimized WebP uploads?
+      **Resolved 2026-08-15**: Not applicable today — `upload.config.UploadSettings.allowed_file_types`
+      does not include `image/webp` in its default allowlist, so a WebP
+      original can't reach the upload pipeline in the first place. FR-1's
+      acceptance criteria only requires variants for JPEG/PNG/GIF. If
+      `image/webp` is ever added to the allowlist, this decision should be
+      revisited.

@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from redis.exceptions import RedisError
 
 from shared.storage.exceptions import StorageError, StorageObjectNotFoundError
 from shared.storage.s3_provider import S3StorageProvider
@@ -25,6 +26,7 @@ from .conftest import (
     AsyncBytesStream,
     FakeDedupService,
     FakeFileRepository,
+    FakeJobQueue,
     FakeUploadSessionRepository,
 )
 
@@ -34,11 +36,13 @@ _VIDEO_MIME_TYPE = "video/mp4"
 
 @pytest.fixture()
 def service(
+    *,
     upload_settings: UploadSettings,
     s3_storage_provider: S3StorageProvider,
     fake_file_repository: FakeFileRepository,
     fake_upload_session_repository: FakeUploadSessionRepository,
     fake_dedup_service: FakeDedupService,
+    fake_job_queue: FakeJobQueue,
 ) -> UploadService:
     return UploadService(
         validator=UploadValidator(upload_settings),
@@ -46,6 +50,7 @@ def service(
         repository=fake_file_repository,
         session_repository=fake_upload_session_repository,
         dedup_service=fake_dedup_service,
+        job_queue=fake_job_queue,
         presigned_url_ttl=upload_settings.presigned_url_ttl,
     )
 
@@ -108,6 +113,7 @@ async def test_upload_small_file_skips_storage_upload_on_dedup_hit(
         repository=fake_file_repository,
         session_repository=fake_upload_session_repository,
         dedup_service=dedup_service,
+        job_queue=FakeJobQueue(),
         presigned_url_ttl=upload_settings.presigned_url_ttl,
     )
 
@@ -142,6 +148,7 @@ async def test_upload_small_file_aborts_dedup_lock_on_storage_failure(
         repository=fake_file_repository,
         session_repository=fake_upload_session_repository,
         dedup_service=dedup_service,
+        job_queue=FakeJobQueue(),
         presigned_url_ttl=upload_settings.presigned_url_ttl,
     )
     content = b"hello world"
@@ -154,6 +161,53 @@ async def test_upload_small_file_aborts_dedup_lock_on_storage_failure(
     assert dedup_service.abort_calls == [hashlib.sha256(content).hexdigest()]
     assert dedup_service.finish_calls == []  # no storage_key was ever written
     assert fake_file_repository.saved == []
+
+
+async def test_upload_small_file_enqueues_variant_generation_job(
+    service: UploadService, fake_job_queue: FakeJobQueue, fake_file_repository: FakeFileRepository
+) -> None:
+    metadata = await service.upload_small_file(
+        filename="profile.jpg", mime_type="image/jpeg", stream=AsyncBytesStream(b"hello world")
+    )
+
+    assert len(fake_job_queue.enqueued) == 1
+    function, args = fake_job_queue.enqueued[0]
+    assert function == "generate_variants"
+    assert args == (str(metadata.file_id), metadata.storage_key, "image/jpeg")
+
+
+async def test_upload_small_file_enqueue_failure_does_not_fail_upload(
+    upload_settings: UploadSettings,
+    s3_storage_provider: S3StorageProvider,
+    fake_file_repository: FakeFileRepository,
+    fake_upload_session_repository: FakeUploadSessionRepository,
+    fake_dedup_service: FakeDedupService,
+) -> None:
+    """Redis being down for the job queue degrades to "no variants" rather
+    than failing the upload — matches dedup's fail-open treatment of Redis
+    outages elsewhere in this domain.
+    """
+
+    class _FailingJobQueue:
+        async def enqueue_job(self, *_args: object) -> object | None:
+            raise RedisError("simulated redis outage")
+
+    service = UploadService(
+        validator=UploadValidator(upload_settings),
+        storage=s3_storage_provider,
+        repository=fake_file_repository,
+        session_repository=fake_upload_session_repository,
+        dedup_service=fake_dedup_service,
+        job_queue=_FailingJobQueue(),  # type: ignore[arg-type]
+        presigned_url_ttl=upload_settings.presigned_url_ttl,
+    )
+
+    metadata = await service.upload_small_file(
+        filename="profile.jpg", mime_type="image/jpeg", stream=AsyncBytesStream(b"hello world")
+    )
+
+    assert isinstance(metadata, FileMetadata)
+    assert len(fake_file_repository.saved) == 1
 
 
 async def test_upload_small_file_persists_bytes_to_storage(
@@ -333,6 +387,27 @@ async def test_finalize_large_upload_success(
     assert fake_file_repository.saved[0].upload_strategy == "presigned"
     assert fake_file_repository.saved[0].etag == real_etag
     assert fake_upload_session_repository.saved[0].finalized is True
+
+
+async def test_finalize_large_upload_enqueues_variant_generation_job(
+    service: UploadService,
+    s3_storage_provider: S3StorageProvider,
+    fake_job_queue: FakeJobQueue,
+) -> None:
+    session_metadata = await service.initiate_large_upload(
+        filename="video.mp4", size=_LARGE_FILE_SIZE, mime_type=_VIDEO_MIME_TYPE
+    )
+    await s3_storage_provider.upload(session_metadata.storage_key, b"x" * _LARGE_FILE_SIZE)
+    real_etag = (await s3_storage_provider.head(session_metadata.storage_key)).etag
+
+    metadata = await service.finalize_large_upload(
+        upload_id=session_metadata.upload_id, etag=real_etag
+    )
+
+    assert len(fake_job_queue.enqueued) == 1
+    function, args = fake_job_queue.enqueued[0]
+    assert function == "generate_variants"
+    assert args == (str(metadata.file_id), metadata.storage_key, _VIDEO_MIME_TYPE)
 
 
 async def test_finalize_large_upload_persists_sha256_hash_and_checks_dedup(

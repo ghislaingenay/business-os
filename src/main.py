@@ -16,6 +16,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     container.storage_provider()
     container.cache_provider()
     container.db_engine()
+    container.job_queue()
     yield
 
 

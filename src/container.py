@@ -6,9 +6,11 @@ from database import DatabaseSettings, create_engine, create_session_factory
 from dedup.config import DedupSettings
 from shared.cache.config import CacheSettings
 from shared.cache.factory import CacheProviderFactory
+from shared.queue.provider import create_job_queue
 from shared.storage.config import StorageSettings
 from shared.storage.factory import StorageProviderFactory
 from upload.config import UploadSettings
+from variants.config import VariantSettings
 
 
 class Container(containers.DeclarativeContainer):
@@ -42,6 +44,16 @@ class Container(containers.DeclarativeContainer):
     upload_settings = providers.Singleton(UploadSettings)
 
     dedup_settings = providers.Singleton(DedupSettings)
+
+    variant_settings = providers.Singleton(VariantSettings)
+
+    # Same eager-init note as storage_provider/cache_provider: call
+    # `container.job_queue()` during startup/lifespan so a bad REDIS_URL fails
+    # fast instead of on first upload.
+    job_queue = providers.Singleton(
+        create_job_queue,
+        redis_url=cache_settings.provided.redis_url,
+    )
 
 
 container = Container()

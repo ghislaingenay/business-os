@@ -12,6 +12,11 @@ class FileMetadata(BaseModel):
     Reused as-is for `/upload/finalize`'s response — FR-5 requires both paths
     to return an identical shape, so this isn't duplicated for the large-file
     path.
+
+    `web_optimized_url`/`thumbnail_url` are `None` right after upload since
+    generation happens asynchronously (TD-004); they're populated by
+    `variants.repository.VariantRepository.update_variants` once the arq
+    worker finishes (FR-4: "API response includes variant URLs if available").
     """
 
     file_id: uuid.UUID
@@ -21,6 +26,8 @@ class FileMetadata(BaseModel):
     mime_type: str
     sha256_hash: str | None
     upload_url: str
+    web_optimized_url: str | None
+    thumbnail_url: str | None
     created_at: datetime
 
 

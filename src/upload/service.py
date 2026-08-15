@@ -3,10 +3,13 @@
 """
 
 import asyncio
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
+
+from redis.exceptions import RedisError
 
 from dedup.hasher import hash_bytes, hash_stream
 from dedup.service import DedupCheckResult
@@ -22,10 +25,13 @@ from upload.models import File, UploadSession
 from upload.schemas import FileMetadata, UploadSessionMetadata
 from upload.validator import UploadValidator, sanitize_filename
 
+logger = logging.getLogger(__name__)
+
 _READ_CHUNK_SIZE = 64 * 1024
 _FINALIZE_INSTRUCTIONS = (
     "PUT file bytes to presigned_url, then call /upload/finalize with upload_id"
 )
+_GENERATE_VARIANTS_JOB = "generate_variants"
 
 
 class FileRepositoryProtocol(Protocol):
@@ -59,6 +65,13 @@ class ByteStream(Protocol):
         ...
 
 
+class JobQueueProtocol(Protocol):
+    """Queueing operations `UploadService` needs to enqueue variant generation (TD-004 §3)."""
+
+    async def enqueue_job(self, function: str, *args: object) -> object | None:
+        ...
+
+
 class DedupServiceProtocol(Protocol):
     """Deduplication operations `UploadService` needs from `dedup.service.DedupService`."""
 
@@ -83,6 +96,7 @@ class UploadService:
         repository: FileRepositoryProtocol,
         session_repository: UploadSessionRepositoryProtocol,
         dedup_service: DedupServiceProtocol,
+        job_queue: JobQueueProtocol,
         presigned_url_ttl: int,
     ) -> None:
         self.validator = validator
@@ -90,6 +104,7 @@ class UploadService:
         self.repository = repository
         self.session_repository = session_repository
         self.dedup_service = dedup_service
+        self.job_queue = job_queue
         self.presigned_url_ttl = presigned_url_ttl
 
     async def upload_small_file(
@@ -141,6 +156,8 @@ class UploadService:
             ),
         )
 
+        await self._enqueue_variant_generation(saved)
+
         upload_url = await self.storage.generate_presigned_url(
             saved.storage_key, "GET", self.presigned_url_ttl
         )
@@ -153,6 +170,8 @@ class UploadService:
             mime_type=saved.mime_type,
             sha256_hash=saved.sha256_hash,
             upload_url=upload_url,
+            web_optimized_url=saved.web_optimized_url,
+            thumbnail_url=saved.thumbnail_url,
             created_at=saved.created_at,
         )
 
@@ -253,6 +272,8 @@ class UploadService:
             _persist_finalized_file(),
         )
 
+        await self._enqueue_variant_generation(saved)
+
         download_url = await self.storage.generate_presigned_url(
             saved.storage_key, "GET", self.presigned_url_ttl
         )
@@ -265,6 +286,8 @@ class UploadService:
             mime_type=saved.mime_type,
             sha256_hash=saved.sha256_hash,
             upload_url=download_url,
+            web_optimized_url=saved.web_optimized_url,
+            thumbnail_url=saved.thumbnail_url,
             created_at=saved.created_at,
         )
 
@@ -286,6 +309,21 @@ class UploadService:
             chunks.append(chunk)
             total += len(chunk)
         return b"".join(chunks)
+
+    async def _enqueue_variant_generation(self, file: File) -> None:
+        """Enqueue the async variant-generation job (TD-004 §3, §5).
+
+        Redis being unreachable degrades to "no variants generated" rather
+        than failing the upload — matches this codebase's existing fail-open
+        treatment of Redis outages in `dedup.service` (cache/lock failures
+        there don't fail the upload either).
+        """
+        try:
+            await self.job_queue.enqueue_job(
+                _GENERATE_VARIANTS_JOB, str(file.file_id), file.storage_key, file.mime_type
+            )
+        except RedisError:
+            logger.warning("variant_job_enqueue_failed", extra={"file_id": str(file.file_id)})
 
     @staticmethod
     def _generate_storage_key(filename: str) -> str:
