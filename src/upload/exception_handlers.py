@@ -12,8 +12,13 @@ from upload.exceptions import (
     EtagMismatchError,
     FileTooLargeError,
     FileTooSmallError,
+    FileTooSmallForMultipartError,
+    IncompletePartsError,
     InvalidFileTypeError,
+    InvalidPartNumberError,
     MimeMismatchError,
+    MultipartSessionExpiredError,
+    MultipartSessionNotFoundError,
     PresignedUrlExpiredError,
     UploadIncompleteError,
     UploadNotFoundError,
@@ -41,6 +46,26 @@ def register_upload_exception_handlers(app: FastAPI) -> None:
         _handle_presigned_url_expired,  # type: ignore[arg-type]
     )
     app.add_exception_handler(EtagMismatchError, _handle_etag_mismatch)  # type: ignore[arg-type]
+    app.add_exception_handler(
+        FileTooSmallForMultipartError,
+        _handle_file_too_small_for_multipart,  # type: ignore[arg-type]
+    )
+    app.add_exception_handler(
+        MultipartSessionNotFoundError,
+        _handle_multipart_session_not_found,  # type: ignore[arg-type]
+    )
+    app.add_exception_handler(
+        MultipartSessionExpiredError,
+        _handle_multipart_session_expired,  # type: ignore[arg-type]
+    )
+    app.add_exception_handler(
+        InvalidPartNumberError,
+        _handle_invalid_part_number,  # type: ignore[arg-type]
+    )
+    app.add_exception_handler(
+        IncompletePartsError,
+        _handle_incomplete_parts,  # type: ignore[arg-type]
+    )
 
 
 async def _handle_file_too_large(_request: Request, exc: FileTooLargeError) -> JSONResponse:
@@ -140,5 +165,75 @@ async def _handle_etag_mismatch(_request: Request, exc: EtagMismatchError) -> JS
             "message": "Uploaded file's ETag does not match the reported ETag.",
             "expected_etag": exc.expected,
             "actual_etag": exc.actual,
+        },
+    )
+
+
+async def _handle_file_too_small_for_multipart(
+    _request: Request, exc: FileTooSmallForMultipartError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": "file_too_small_for_multipart",
+            "message": (
+                f"File size ({exc.size} bytes) is <= {exc.min_size} byte multipart threshold. "
+                "Use /upload/initiate without multipart for this file size."
+            ),
+            "min_multipart_size": exc.min_size,
+        },
+    )
+
+
+async def _handle_multipart_session_not_found(
+    _request: Request, exc: MultipartSessionNotFoundError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={
+            "error": "multipart_session_not_found",
+            "message": "Multipart session not found or already finalized",
+            "upload_id": str(exc.upload_id),
+        },
+    )
+
+
+async def _handle_multipart_session_expired(
+    _request: Request, exc: MultipartSessionExpiredError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_410_GONE,
+        content={
+            "error": "multipart_session_expired",
+            "message": "Multipart session expired. Initiate a new upload.",
+            "expired_at": exc.expired_at.isoformat(),
+        },
+    )
+
+
+async def _handle_invalid_part_number(
+    _request: Request, exc: InvalidPartNumberError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": "invalid_part_number",
+            "message": (
+                f"Part number {exc.part_number} is outside the valid range "
+                f"[1, {exc.total_parts}]"
+            ),
+            "total_parts": exc.total_parts,
+        },
+    )
+
+
+async def _handle_incomplete_parts(_request: Request, exc: IncompletePartsError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "error": "incomplete_parts",
+            "message": "Not all parts were provided for this multipart upload",
+            "upload_id": str(exc.upload_id),
+            "missing_parts": exc.missing_parts,
         },
     )

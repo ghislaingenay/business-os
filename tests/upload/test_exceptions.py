@@ -1,8 +1,16 @@
+import uuid
+from datetime import UTC, datetime
+
 from upload.exceptions import (
     FileTooLargeError,
     FileTooSmallError,
+    FileTooSmallForMultipartError,
+    IncompletePartsError,
     InvalidFileTypeError,
+    InvalidPartNumberError,
     MimeMismatchError,
+    MultipartSessionExpiredError,
+    MultipartSessionNotFoundError,
     UploadError,
 )
 
@@ -45,3 +53,53 @@ def test_mime_mismatch_error_carries_filename_and_mime_type() -> None:
     assert error.mime_type == "image/jpeg"
     assert "fake.png" in str(error)
     assert "image/jpeg" in str(error)
+
+
+def test_file_too_small_for_multipart_error_carries_size_and_min_size() -> None:
+    error = FileTooSmallForMultipartError(size=1024, min_size=104_857_600)
+
+    assert isinstance(error, UploadError)
+    assert error.size == 1024
+    assert error.min_size == 104_857_600
+    assert "1024" in str(error)
+
+
+def test_multipart_session_not_found_error_carries_upload_id() -> None:
+    upload_id = uuid.uuid4()
+
+    error = MultipartSessionNotFoundError(upload_id)
+
+    assert isinstance(error, UploadError)
+    assert error.upload_id == upload_id
+    assert str(upload_id) in str(error)
+
+
+def test_multipart_session_expired_error_carries_upload_id_and_expiry() -> None:
+    upload_id = uuid.uuid4()
+    expired_at = datetime(2026, 8, 15, 10, 0, 0, tzinfo=UTC)
+
+    error = MultipartSessionExpiredError(upload_id, expired_at)
+
+    assert isinstance(error, UploadError)
+    assert error.upload_id == upload_id
+    assert error.expired_at == expired_at
+
+
+def test_invalid_part_number_error_carries_part_number_and_total_parts() -> None:
+    error = InvalidPartNumberError(part_number=99, total_parts=20)
+
+    assert isinstance(error, UploadError)
+    assert error.part_number == 99
+    assert error.total_parts == 20
+    assert "99" in str(error)
+    assert "20" in str(error)
+
+
+def test_incomplete_parts_error_carries_upload_id_and_missing_parts() -> None:
+    upload_id = uuid.uuid4()
+
+    error = IncompletePartsError(upload_id, missing_parts=[3, 7])
+
+    assert isinstance(error, UploadError)
+    assert error.upload_id == upload_id
+    assert error.missing_parts == [3, 7]

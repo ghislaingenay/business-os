@@ -77,6 +77,57 @@ class UploadIncompleteError(UploadError):
         super().__init__(f"File not found in storage at key: {storage_key}")
 
 
+class FileTooSmallForMultipartError(UploadError):
+    """Raised when `multipart: true` is requested for a file at or under
+    FEAT-005's own multipart threshold (distinct from the mediated/presigned
+    threshold in `FileTooSmallError`/`FileTooLargeError`).
+    """
+
+    def __init__(self, size: int, min_size: int) -> None:
+        self.size = size
+        self.min_size = min_size
+        super().__init__(f"File size ({size} bytes) is <= {min_size} byte multipart threshold")
+
+
+class MultipartSessionNotFoundError(UploadError):
+    """Raised when `upload_id` has no matching non-finalized multipart session.
+
+    Covers both an unknown `upload_id` and one already finalized, mirroring
+    `UploadNotFoundError`'s treatment of the equivalent presigned-session case.
+    """
+
+    def __init__(self, upload_id: uuid.UUID) -> None:
+        self.upload_id = upload_id
+        super().__init__(f"Multipart session not found or already finalized: {upload_id}")
+
+
+class MultipartSessionExpiredError(UploadError):
+    """Raised when a multipart operation is attempted after the session's 24h TTL."""
+
+    def __init__(self, upload_id: uuid.UUID, expired_at: datetime) -> None:
+        self.upload_id = upload_id
+        self.expired_at = expired_at
+        super().__init__(f"Multipart session {upload_id} expired at {expired_at.isoformat()}")
+
+
+class InvalidPartNumberError(UploadError):
+    """Raised when a requested part number falls outside `[1, total_parts]`."""
+
+    def __init__(self, part_number: int, total_parts: int) -> None:
+        self.part_number = part_number
+        self.total_parts = total_parts
+        super().__init__(f"Part number {part_number} is outside the valid range [1, {total_parts}]")
+
+
+class IncompletePartsError(UploadError):
+    """Raised when `/upload/finalize` is called with gaps in the part sequence."""
+
+    def __init__(self, upload_id: uuid.UUID, missing_parts: list[int]) -> None:
+        self.upload_id = upload_id
+        self.missing_parts = missing_parts
+        super().__init__(f"Multipart upload {upload_id} is missing parts: {missing_parts}")
+
+
 class EtagMismatchError(UploadError):
     """Raised when the client-supplied ETag doesn't match storage's reported ETag.
 

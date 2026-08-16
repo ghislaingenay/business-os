@@ -1,9 +1,9 @@
 # TD-005: Multipart Upload Support
 
-Status: Not Started
+Status: Doing
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-11
+Last Updated: 2026-08-16
 
 Feature Spec: [FEAT-005 - Multipart Upload Support](../features/FEAT-005-multipart-upload-support.md)
 

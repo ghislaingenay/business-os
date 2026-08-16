@@ -1,18 +1,22 @@
 # Current Feature
 
-FEAT-004: Async Variant Generation
+FEAT-005: Multipart Upload Support
 
 ## File
 
-[FEAT-004 - Async Variant Generation](features/FEAT-004-async-variant-generation.md)
+[FEAT-005 - Multipart Upload Support](features/FEAT-005-multipart-upload-support.md)
 
 ## Goals
 
-- [x] FR-1: WebP Variant Generation — convert JPEG/PNG/GIF uploads to WebP (quality 85), stored at `webp/{YYYY}/{MM}/{DD}/{UUID}.webp`, aspect ratio preserved
-- [x] FR-2: Thumbnail Generation — 256x256 letterboxed thumbnail (quality 80), stored at `thumbnails/{YYYY}/{MM}/{DD}/{UUID}_thumb.jpg`
-- [x] FR-3: Job Queueing — enqueue arq job after upload completes, 60s timeout, 3 retries with exponential backoff (1s, 5s, 25s)
-- [x] FR-4: Metadata Update — atomic update of `web_optimized_url` (renamed from `webp_url`)/`thumbnail_url` on the `files` row after generation
+- [ ] FR-1: Multipart Upload Initiation — `POST /upload/initiate` accepts `multipart: true` for files >100MB, returns `upload_id`, `part_size` (10MB), `total_parts`, `part_upload_urls[]`; session stored in `multipart_sessions` with 24h TTL; part URLs are presigned PUT with 15-min TTL
+- [ ] FR-2: Part Upload Tracking — `GET /upload/{upload_id}/status` returns `parts_completed[]`, `parts_remaining[]`, `progress_percentage`, checked against storage's ListParts-equivalent
+- [ ] FR-3: Part Upload Retry — `POST /upload/{upload_id}/retry-part` issues a new presigned URL for a given part number, validated against `[1, total_parts]`
+- [ ] FR-4: Multipart Upload Finalization — `POST /upload/finalize` completes multipart uploads via CompleteMultipartUpload-equivalent, verifying no gaps in parts
+- [ ] FR-5: Abandoned Session Cleanup — scheduled job aborts multipart sessions older than 24h and deletes their DB rows
 
 ## Notes
 
-Single-PR feature (no phase decomposition in TD-004). Depends on FEAT-001 (storage abstraction) and FEAT-002 (hybrid upload), both Done. Building on branch `feature/file-async-variant-generation`.
+Implementing the entire feature (both TD-005 phases) as a single PR on branch
+`feature/multipart-upload-support`, per explicit user instruction — no PR
+Progress/phase-decomposition tracking. Depends on FEAT-001 (storage
+abstraction) and FEAT-002 (hybrid upload), both Done.

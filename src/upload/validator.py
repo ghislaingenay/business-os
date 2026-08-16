@@ -3,17 +3,33 @@
 import mimetypes
 import re
 import unicodedata
-from pathlib import PurePosixPath
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path, PurePosixPath
 
 from upload.config import UploadSettings
 from upload.exceptions import (
     FileTooLargeError,
     FileTooSmallError,
+    FileTooSmallForMultipartError,
     InvalidFileTypeError,
     MimeMismatchError,
 )
 
 _FALLBACK_FILENAME = "upload"
+
+
+def generate_storage_key(filename: str) -> str:
+    """Build `originals/{YYYY}/{MM}/{DD}/{UUID}.{ext}` (TD-002 §10).
+
+    Shared by `upload.service.UploadService` and
+    `upload.multipart_service.MultipartService` — both need the identical
+    key format, so it lives here alongside `sanitize_filename` rather than
+    being duplicated per service.
+    """
+    today = datetime.now(UTC)
+    extension = Path(filename).suffix
+    return f"originals/{today:%Y}/{today:%m}/{today:%d}/{uuid.uuid4()}{extension}"
 
 
 def sanitize_filename(filename: str) -> str:
@@ -66,6 +82,18 @@ class UploadValidator:
     def validate_for_presigned_upload(self, filename: str, size: int, mime_type: str) -> None:
         if size <= self.settings.max_small_file_size:
             raise FileTooSmallError(size, self.settings.max_small_file_size)
+        self._validate_type_and_mime(filename, mime_type)
+
+    def validate_for_multipart_upload(
+        self, filename: str, size: int, mime_type: str, min_multipart_size: int
+    ) -> None:
+        """`min_multipart_size` is FEAT-005's own threshold (`MultipartSettings.min_multipart_size`,
+        default 100MB) — distinct from `settings.max_small_file_size` (the
+        mediated-vs-presigned boundary, default 2MB), so it's passed in
+        rather than read off `self.settings`.
+        """
+        if size <= min_multipart_size:
+            raise FileTooSmallForMultipartError(size, min_multipart_size)
         self._validate_type_and_mime(filename, mime_type)
 
     def _validate_type_and_mime(self, filename: str, mime_type: str) -> None:

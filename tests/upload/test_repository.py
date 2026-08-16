@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from upload.models import File, UploadSession
-from upload.repository import FileRepository, UploadSessionRepository
+from upload.models import File, MultipartSession, UploadSession
+from upload.repository import FileRepository, MultipartSessionRepository, UploadSessionRepository
 
 
 @pytest.fixture()
@@ -26,6 +26,7 @@ def mock_session() -> MagicMock:
     session.commit = AsyncMock()
     session.refresh = AsyncMock()
     session.execute = AsyncMock()
+    session.delete = AsyncMock()
     return session
 
 
@@ -115,3 +116,81 @@ async def test_find_active_by_id_returns_none_when_missing(mock_session: MagicMo
     found = await repo.find_active_by_id(uuid.uuid4())
 
     assert found is None
+
+
+def _make_multipart_session() -> MultipartSession:
+    return MultipartSession(
+        storage_upload_id="s3-upload-id",
+        filename="video.mp4",
+        size=524_288_000,
+        mime_type="video/mp4",
+        part_size=10_485_760,
+        total_parts=50,
+        storage_key="originals/2026/08/16/abc.mp4",
+        finalized=False,
+        expires_at=datetime.now(UTC),
+    )
+
+
+async def test_multipart_session_repository_save_adds_commits_and_refreshes(
+    mock_session: MagicMock,
+) -> None:
+    repo = MultipartSessionRepository(mock_session)
+    session_row = _make_multipart_session()
+
+    result = await repo.save(session_row)
+
+    mock_session.add.assert_called_once_with(session_row)
+    mock_session.commit.assert_awaited_once()
+    mock_session.refresh.assert_awaited_once_with(session_row)
+    assert result is session_row
+
+
+async def test_multipart_find_active_by_id_returns_matching_session(
+    mock_session: MagicMock,
+) -> None:
+    repo = MultipartSessionRepository(mock_session)
+    expected = _make_multipart_session()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = expected
+    mock_session.execute.return_value = result
+
+    found = await repo.find_active_by_id(uuid.uuid4())
+
+    assert found is expected
+
+
+async def test_multipart_mark_finalized_mutates_without_committing(
+    mock_session: MagicMock,
+) -> None:
+    repo = MultipartSessionRepository(mock_session)
+    session_row = _make_multipart_session()
+
+    await repo.mark_finalized(session_row)
+
+    assert session_row.finalized is True
+    mock_session.commit.assert_not_called()
+
+
+async def test_find_expired_unfinalized_returns_matching_sessions(
+    mock_session: MagicMock,
+) -> None:
+    repo = MultipartSessionRepository(mock_session)
+    expected = [_make_multipart_session()]
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = expected
+    mock_session.execute.return_value = result
+
+    found = await repo.find_expired_unfinalized(datetime.now(UTC))
+
+    assert found == expected
+
+
+async def test_multipart_delete_removes_and_commits(mock_session: MagicMock) -> None:
+    repo = MultipartSessionRepository(mock_session)
+    session_row = _make_multipart_session()
+
+    await repo.delete(session_row)
+
+    mock_session.delete.assert_awaited_once_with(session_row)
+    mock_session.commit.assert_awaited_once()

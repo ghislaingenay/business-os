@@ -17,7 +17,9 @@ class File(Base):
     __tablename__ = "files"
     __table_args__ = (
         CheckConstraint("size > 0", name="chk_size_positive"),
-        CheckConstraint("upload_strategy IN ('mediated', 'presigned')", name="chk_strategy"),
+        CheckConstraint(
+            "upload_strategy IN ('mediated', 'presigned', 'multipart')", name="chk_strategy"
+        ),
         Index("idx_files_storage_key", "storage_key"),
         Index(
             "idx_files_sha256_hash",
@@ -69,3 +71,34 @@ class UploadSession(Base):
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     finalized: Mapped[bool] = mapped_column(nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+
+
+class MultipartSession(Base):
+    """Tracks a chunked multipart upload from initiation through finalization
+    (TD-005 §3).
+    """
+
+    __tablename__ = "multipart_sessions"
+    __table_args__ = (
+        CheckConstraint("size > 0", name="chk_multipart_size"),
+        CheckConstraint("total_parts > 0", name="chk_multipart_parts"),
+        Index(
+            "idx_multipart_sessions_expires",
+            "expires_at",
+            postgresql_where="NOT finalized",
+        ),
+    )
+
+    upload_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    storage_upload_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(127), nullable=False)
+    part_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    total_parts: Mapped[int] = mapped_column(nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    finalized: Mapped[bool] = mapped_column(nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)

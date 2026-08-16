@@ -14,7 +14,9 @@ from dedup.service import DedupService
 from shared.cache.provider import CacheProvider
 from shared.storage.provider import StorageProvider
 from upload.config import UploadSettings
-from upload.repository import FileRepository, UploadSessionRepository
+from upload.multipart_config import MultipartSettings
+from upload.multipart_service import MultipartService
+from upload.repository import FileRepository, MultipartSessionRepository, UploadSessionRepository
 from upload.service import UploadService
 from upload.validator import UploadValidator
 
@@ -25,6 +27,10 @@ def get_upload_settings() -> UploadSettings:
 
 def get_dedup_settings() -> DedupSettings:
     return container.dedup_settings()
+
+
+def get_multipart_settings() -> MultipartSettings:
+    return container.multipart_settings()
 
 
 def get_storage_provider() -> StorageProvider:
@@ -62,6 +68,12 @@ def get_upload_session_repository(
     return UploadSessionRepository(session)
 
 
+def get_multipart_session_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> MultipartSessionRepository:
+    return MultipartSessionRepository(session)
+
+
 def get_dedup_repository(
     session: AsyncSession = Depends(get_db_session),
     settings: DedupSettings = Depends(get_dedup_settings),
@@ -95,4 +107,27 @@ def get_upload_service(
         dedup_service=dedup_service,
         job_queue=job_queue,
         presigned_url_ttl=settings.presigned_url_ttl,
+    )
+
+
+def get_multipart_service(
+    *,
+    validator: UploadValidator = Depends(get_upload_validator),
+    storage: StorageProvider = Depends(get_storage_provider),
+    repository: FileRepository = Depends(get_file_repository),
+    session_repository: MultipartSessionRepository = Depends(get_multipart_session_repository),
+    dedup_service: DedupService = Depends(get_dedup_service),
+    job_queue: ArqRedis = Depends(get_job_queue),
+    settings: MultipartSettings = Depends(get_multipart_settings),
+    upload_settings: UploadSettings = Depends(get_upload_settings),
+) -> MultipartService:
+    return MultipartService(
+        validator=validator,
+        storage=storage,
+        repository=repository,
+        session_repository=session_repository,
+        dedup_service=dedup_service,
+        job_queue=job_queue,
+        settings=settings,
+        presigned_url_ttl=upload_settings.presigned_url_ttl,
     )

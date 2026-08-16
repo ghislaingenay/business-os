@@ -14,7 +14,12 @@ from shared.storage.exceptions import (
     StorageObjectNotFoundError,
     StoragePermissionError,
 )
-from shared.storage.provider import StorageObjectMetadata, StorageProvider
+from shared.storage.provider import (
+    CompletedPart,
+    StorageObjectMetadata,
+    StoragePart,
+    StorageProvider,
+)
 
 _NOT_FOUND_CODES = {"NoSuchKey", "404"}
 _PERMISSION_DENIED_CODES = {"AccessDenied", "403"}
@@ -113,6 +118,78 @@ class S3StorageProvider(StorageProvider):
                 ClientMethod=client_method,
                 Params={"Bucket": self._bucket, "Key": key},
                 ExpiresIn=ttl,
+            )
+        except ClientError as exc:
+            raise self._translate_error(key, exc) from exc
+
+    async def create_multipart_upload(self, key: str) -> str:
+        try:
+            response = await asyncio.to_thread(
+                self._client.create_multipart_upload, Bucket=self._bucket, Key=key
+            )
+        except ClientError as exc:
+            raise self._translate_error(key, exc) from exc
+        return str(response["UploadId"])
+
+    async def generate_part_upload_url(
+        self, key: str, upload_id: str, part_number: int, ttl: int
+    ) -> str:
+        try:
+            return await asyncio.to_thread(
+                self._client.generate_presigned_url,
+                ClientMethod="upload_part",
+                Params={
+                    "Bucket": self._bucket,
+                    "Key": key,
+                    "UploadId": upload_id,
+                    "PartNumber": part_number,
+                },
+                ExpiresIn=ttl,
+            )
+        except ClientError as exc:
+            raise self._translate_error(key, exc) from exc
+
+    async def list_parts(self, key: str, upload_id: str) -> list[StoragePart]:
+        try:
+            response = await asyncio.to_thread(
+                self._client.list_parts, Bucket=self._bucket, Key=key, UploadId=upload_id
+            )
+        except ClientError as exc:
+            raise self._translate_error(key, exc) from exc
+
+        return [
+            StoragePart(
+                part_number=part["PartNumber"],
+                etag=part["ETag"].strip('"'),
+                size=part["Size"],
+            )
+            for part in response.get("Parts", [])
+        ]
+
+    async def complete_multipart_upload(
+        self, key: str, upload_id: str, parts: list[CompletedPart]
+    ) -> str:
+        try:
+            await asyncio.to_thread(
+                self._client.complete_multipart_upload,
+                Bucket=self._bucket,
+                Key=key,
+                UploadId=upload_id,
+                MultipartUpload={
+                    "Parts": [{"PartNumber": part.part_number, "ETag": part.etag} for part in parts]
+                },
+            )
+        except ClientError as exc:
+            raise self._translate_error(key, exc) from exc
+        return key
+
+    async def abort_multipart_upload(self, key: str, upload_id: str) -> None:
+        try:
+            await asyncio.to_thread(
+                self._client.abort_multipart_upload,
+                Bucket=self._bucket,
+                Key=key,
+                UploadId=upload_id,
             )
         except ClientError as exc:
             raise self._translate_error(key, exc) from exc

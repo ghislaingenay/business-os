@@ -6,7 +6,6 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Protocol
 
 from redis.exceptions import RedisError
@@ -23,7 +22,7 @@ from upload.exceptions import (
 )
 from upload.models import File, UploadSession
 from upload.schemas import FileMetadata, UploadSessionMetadata
-from upload.validator import UploadValidator, sanitize_filename
+from upload.validator import UploadValidator, generate_storage_key, sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +127,7 @@ class UploadService:
             # storage API call entirely (FR-2).
             storage_key = dedup_result.existing_storage_key
         else:
-            storage_key = self._generate_storage_key(safe_filename)
+            storage_key = generate_storage_key(safe_filename)
             try:
                 await self.storage.upload(storage_key, content, metadata={"mime_type": mime_type})
             except StorageError:
@@ -184,7 +183,7 @@ class UploadService:
         safe_filename = sanitize_filename(filename)
         self.validator.validate_for_presigned_upload(safe_filename, size, mime_type)
 
-        storage_key = self._generate_storage_key(safe_filename)
+        storage_key = generate_storage_key(safe_filename)
         presigned_url = await self.storage.generate_presigned_url(
             storage_key, "PUT", self.presigned_url_ttl
         )
@@ -324,10 +323,3 @@ class UploadService:
             )
         except RedisError:
             logger.warning("variant_job_enqueue_failed", extra={"file_id": str(file.file_id)})
-
-    @staticmethod
-    def _generate_storage_key(filename: str) -> str:
-        """Build `originals/{YYYY}/{MM}/{DD}/{UUID}.{ext}` (TD-002 §10)."""
-        today = datetime.now(UTC)
-        extension = Path(filename).suffix
-        return f"originals/{today:%Y}/{today:%m}/{today:%d}/{uuid.uuid4()}{extension}"

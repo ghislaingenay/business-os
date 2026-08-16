@@ -1,9 +1,9 @@
 # FEAT-005: Multipart Upload Support
 
-Status: Not Started
+Status: Doing
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-11
+Last Updated: 2026-08-16
 
 Technical Design: [TD-005 - Multipart Upload Support](../technical-designs/TD-005-multipart-upload-support.md)
 
@@ -189,7 +189,7 @@ So that **I know the upload is progressing and can estimate completion time**
 
 # 8. Open Questions
 
-- [ ] Should we support custom chunk sizes (e.g., 5MB for slow networks)?
-- [ ] Do we need server-side pause/resume (store last completed part)?
-- [ ] Should we calculate hash incrementally (per part) or after completion?
-- [ ] How do we handle partial uploads across server restarts (session recovery)?
+- [ ] Should we support custom chunk sizes (e.g., 5MB for slow networks)? — Out of scope: Non-Goals already commits to fixed 10MB chunks.
+- [ ] Do we need server-side pause/resume (store last completed part)? — Out of scope: Non-Goals already commits to client-tracked resume, not server-driven.
+- [x] Should we calculate hash incrementally (per part) or after completion? — **Resolved 2026-08-15**: already answered in §6 Dependencies ("hash calculated after all parts uploaded"); applies to PR2's finalize path.
+- [x] How do we handle partial uploads across server restarts (session recovery)? — **Resolved 2026-08-15**: already answered by the Data Model (TD-005 §3) — sessions persist in `multipart_sessions` (Postgres), not in-memory, so a server restart doesn't lose state; the client resumes via the existing `/status` and `/retry-part` endpoints, which read from that persisted record.
