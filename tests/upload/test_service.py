@@ -173,7 +173,7 @@ async def test_upload_small_file_enqueues_variant_generation_job(
     assert len(fake_job_queue.enqueued) == 1
     function, args = fake_job_queue.enqueued[0]
     assert function == "generate_variants"
-    assert args == (str(metadata.file_id), metadata.storage_key, "image/jpeg")
+    assert args == (str(metadata.file_id), metadata.storage_key, "image/jpeg", None)
 
 
 async def test_upload_small_file_enqueue_failure_does_not_fail_upload(
@@ -407,7 +407,7 @@ async def test_finalize_large_upload_enqueues_variant_generation_job(
     assert len(fake_job_queue.enqueued) == 1
     function, args = fake_job_queue.enqueued[0]
     assert function == "generate_variants"
-    assert args == (str(metadata.file_id), metadata.storage_key, _VIDEO_MIME_TYPE)
+    assert args == (str(metadata.file_id), metadata.storage_key, _VIDEO_MIME_TYPE, None)
 
 
 async def test_finalize_large_upload_persists_sha256_hash_and_checks_dedup(

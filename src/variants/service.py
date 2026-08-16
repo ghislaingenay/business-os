@@ -6,19 +6,21 @@ this).
 """
 
 import asyncio
-import logging
+import time
 import uuid
 from pathlib import Path
 from typing import Protocol
 
 from shared.image.exceptions import ImageDecodeError
 from shared.image.processor import to_thumbnail, to_webp
+from shared.logging.config import setup_logger
+from shared.logging.metrics import log_variant_generated
 from shared.storage.exceptions import StorageError
 from shared.storage.provider import StorageProvider
 from variants.config import VariantSettings
 from variants.exceptions import VariantGenerationError
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class VariantRepositoryProtocol(Protocol):
@@ -55,6 +57,7 @@ class VariantService:
         if mime_type not in self.settings.generated_mime_types:
             return
 
+        started = time.monotonic()
         try:
             original = await self._download(storage_key)
             # Pillow's encode/decode work is CPU-bound and synchronous; run it
@@ -63,15 +66,20 @@ class VariantService:
             # in `worker.WorkerSettings`) for the duration of the conversion
             # (coding-standards.md §9: "run it in a threadpool rather than
             # blocking the event loop").
+            web_optimized_started = time.monotonic()
             web_optimized_bytes = await asyncio.to_thread(
                 to_webp, original, quality=self.settings.web_optimized_quality
             )
+            web_optimized_duration_ms = (time.monotonic() - web_optimized_started) * 1000
+
+            thumbnail_started = time.monotonic()
             thumbnail_bytes = await asyncio.to_thread(
                 to_thumbnail,
                 original,
                 size=(self.settings.thumbnail_size, self.settings.thumbnail_size),
                 quality=self.settings.thumbnail_quality,
             )
+            thumbnail_duration_ms = (time.monotonic() - thumbnail_started) * 1000
 
             web_optimized_key = self._variant_key(storage_key, prefix="webp", suffix="", ext="webp")
             thumbnail_key = self._variant_key(
@@ -86,10 +94,31 @@ class VariantService:
             )
 
             await self.repository.update_variants(file_id, web_optimized_key, thumbnail_key)
+
+            log_variant_generated(
+                file_id=str(file_id),
+                variant_type="web_optimized",
+                duration_ms=web_optimized_duration_ms,
+            )
+            log_variant_generated(
+                file_id=str(file_id),
+                variant_type="thumbnail",
+                duration_ms=thumbnail_duration_ms,
+            )
         except (StorageError, ImageDecodeError) as exc:
-            logger.warning(
+            logger.error(
                 "variant_generation_failed",
-                extra={"file_id": str(file_id), "storage_key": storage_key},
+                error_type=type(exc).__name__,
+                file_id=str(file_id),
+                storage_key=storage_key,
+                operation="generate_variants",
+                exc_info=True,
+            )
+            log_variant_generated(
+                file_id=str(file_id),
+                variant_type="unknown",
+                duration_ms=(time.monotonic() - started) * 1000,
+                outcome="failure",
             )
             raise VariantGenerationError(
                 f"Failed to generate variants for file {file_id}: {exc}"

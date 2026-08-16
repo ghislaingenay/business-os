@@ -10,7 +10,7 @@ warrant its own class, while still sharing `UploadValidator`,
 """
 
 import asyncio
-import logging
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -19,6 +19,9 @@ from redis.exceptions import RedisError
 
 from dedup.hasher import hash_stream
 from dedup.service import DedupCheckResult
+from shared.logging.config import setup_logger
+from shared.logging.metrics import log_upload_complete
+from shared.logging.middleware import get_request_id
 from shared.storage.provider import CompletedPart, StorageProvider
 from upload.exceptions import (
     IncompletePartsError,
@@ -37,7 +40,7 @@ from upload.schemas import (
 )
 from upload.validator import UploadValidator, generate_storage_key, sanitize_filename
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 _GENERATE_VARIANTS_JOB = "generate_variants"
 _UPLOAD_STRATEGY = "multipart"
@@ -74,7 +77,7 @@ class FileRepositoryProtocol(Protocol):
 class DedupServiceProtocol(Protocol):
     """Deduplication operations `MultipartService` needs from `dedup.service.DedupService`."""
 
-    async def check(self, sha256_hash: str) -> DedupCheckResult:
+    async def check(self, sha256_hash: str, file_size: int) -> DedupCheckResult:
         ...
 
     async def finish(self, sha256_hash: str, storage_key: str, result: DedupCheckResult) -> None:
@@ -227,6 +230,7 @@ class MultipartService:
         per part — resolves FEAT-005 §8's open question, per its own §6
         Dependencies note ("hash calculated after all parts uploaded").
         """
+        started = time.monotonic()
         session = await self._find_active_session(upload_id)
 
         if session.expires_at < datetime.now(UTC):
@@ -253,7 +257,7 @@ class MultipartService:
 
         storage_metadata = await self.storage.head(session.storage_key)
         sha256_hash = await hash_stream(self.storage.download(session.storage_key))
-        dedup_result = await self.dedup_service.check(sha256_hash)
+        dedup_result = await self.dedup_service.check(sha256_hash, storage_metadata.size)
 
         async def _persist_finalized_file() -> File:
             # Same same-transaction rationale as
@@ -284,6 +288,13 @@ class MultipartService:
             saved.storage_key, "GET", self.presigned_url_ttl
         )
 
+        log_upload_complete(
+            file_id=str(saved.file_id),
+            size=saved.size,
+            strategy=_UPLOAD_STRATEGY,
+            duration_ms=(time.monotonic() - started) * 1000,
+        )
+
         return FileMetadata(
             file_id=saved.file_id,
             storage_key=saved.storage_key,
@@ -311,10 +322,14 @@ class MultipartService:
         """
         try:
             await self.job_queue.enqueue_job(
-                _GENERATE_VARIANTS_JOB, str(file.file_id), file.storage_key, file.mime_type
+                _GENERATE_VARIANTS_JOB,
+                str(file.file_id),
+                file.storage_key,
+                file.mime_type,
+                get_request_id(),
             )
         except RedisError:
-            logger.warning("variant_job_enqueue_failed", extra={"file_id": str(file.file_id)})
+            logger.warning("variant_job_enqueue_failed", file_id=str(file.file_id))
 
     @staticmethod
     def _estimate_eta_seconds(session: MultipartSession, bytes_uploaded: int) -> int | None:
@@ -373,9 +388,7 @@ class MultipartCleanupService:
 
         logger.info(
             "multipart_cleanup",
-            extra={
-                "sessions_aborted": len(expired_sessions),
-                "storage_parts_deleted": storage_parts_deleted,
-            },
+            sessions_aborted=len(expired_sessions),
+            storage_parts_deleted=storage_parts_deleted,
         )
         return len(expired_sessions), storage_parts_deleted

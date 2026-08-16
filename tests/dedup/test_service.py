@@ -16,6 +16,7 @@ from shared.cache.provider import CacheProvider
 _HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 _STORAGE_KEY = "originals/2026/08/14/abc.jpg"
 _NEW_STORAGE_KEY = "originals/2026/08/14/def.jpg"
+_FILE_SIZE = 12345
 
 
 class FakeCacheProvider(CacheProvider):
@@ -112,7 +113,7 @@ async def test_check_returns_none_when_disabled(
     disabled_settings = DedupSettings(enabled=False)
     service = DedupService(cache=cache, repository=repository, settings=disabled_settings)
 
-    result = await service.check(_HASH)
+    result = await service.check(_HASH, _FILE_SIZE)
 
     assert result == DedupCheckResult(existing_storage_key=None, lock_token=None)
     assert cache.store == {}
@@ -131,7 +132,7 @@ async def test_finish_is_a_noop_when_disabled(
 
 
 async def test_check_returns_none_on_full_miss(service: DedupService) -> None:
-    result = await service.check(_HASH)
+    result = await service.check(_HASH, _FILE_SIZE)
 
     assert result.existing_storage_key is None
 
@@ -142,7 +143,7 @@ async def test_check_returns_cache_hit_and_renews_ttl(
     cache.store[f"dedup:hash:{_HASH}"] = _STORAGE_KEY
     cache.ttls[f"dedup:hash:{_HASH}"] = 1  # about to expire
 
-    result = await service.check(_HASH)
+    result = await service.check(_HASH, _FILE_SIZE)
 
     assert result.existing_storage_key == _STORAGE_KEY
     assert cache.ttls[f"dedup:hash:{_HASH}"] == 86400  # renewed (FR-2)
@@ -153,7 +154,7 @@ async def test_check_returns_db_hit_and_populates_cache(
 ) -> None:
     repository.data[_HASH] = _STORAGE_KEY
 
-    result = await service.check(_HASH)
+    result = await service.check(_HASH, _FILE_SIZE)
 
     assert result.existing_storage_key == _STORAGE_KEY
     assert cache.store[f"dedup:hash:{_HASH}"] == _STORAGE_KEY  # FR-3: cache populated on DB hit
@@ -165,7 +166,7 @@ async def test_check_propagates_database_unavailable_error(
     repository.raise_unavailable = True
 
     with pytest.raises(DedupDatabaseUnavailableError):
-        await service.check(_HASH)
+        await service.check(_HASH, _FILE_SIZE)
 
 
 async def test_check_falls_back_to_db_when_cache_unavailable(
@@ -174,7 +175,7 @@ async def test_check_falls_back_to_db_when_cache_unavailable(
     repository.data[_HASH] = _STORAGE_KEY
     cache.unavailable = True
 
-    result = await service.check(_HASH)
+    result = await service.check(_HASH, _FILE_SIZE)
 
     # Cache writes fail silently too (graceful degradation), but the lookup
     # itself still succeeds via the database.
@@ -185,7 +186,7 @@ async def test_check_falls_back_to_db_when_cache_unavailable(
 async def test_check_acquires_lock_on_first_try(
     service: DedupService, cache: FakeCacheProvider
 ) -> None:
-    result = await service.check(_HASH)
+    result = await service.check(_HASH, _FILE_SIZE)
 
     assert result.lock_token is not None
     assert cache.store[f"lock:hash:{_HASH}"] == result.lock_token
@@ -196,7 +197,7 @@ async def test_check_fails_open_when_lock_already_held(
 ) -> None:
     cache.store[f"lock:hash:{_HASH}"] = "someone-elses-token"
 
-    result = await service.check(_HASH)
+    result = await service.check(_HASH, _FILE_SIZE)
 
     # FR-4: fails open after exhausting retries rather than blocking forever.
     assert result.lock_token is None
@@ -205,7 +206,7 @@ async def test_check_fails_open_when_lock_already_held(
 async def test_finish_populates_cache_and_releases_lock(
     service: DedupService, cache: FakeCacheProvider
 ) -> None:
-    result = await service.check(_HASH)
+    result = await service.check(_HASH, _FILE_SIZE)
 
     await service.finish(_HASH, _NEW_STORAGE_KEY, result)
 
@@ -230,7 +231,7 @@ async def test_abort_releases_lock_without_populating_cache(
     when its own upload work failed before producing a storage_key worth
     caching (see upload/service.py's use of it on a storage.upload failure).
     """
-    result = await service.check(_HASH)
+    result = await service.check(_HASH, _FILE_SIZE)
 
     await service.abort(_HASH, result)
 
@@ -263,7 +264,7 @@ async def test_abort_is_a_noop_when_disabled(
 async def test_finish_handles_cache_unavailable_without_raising(
     service: DedupService, cache: FakeCacheProvider
 ) -> None:
-    result = await service.check(_HASH)
+    result = await service.check(_HASH, _FILE_SIZE)
     cache.unavailable = True
 
     await service.finish(_HASH, _NEW_STORAGE_KEY, result)  # must not raise
@@ -279,7 +280,9 @@ async def test_concurrent_checks_for_same_hash_only_one_acquires_lock(
     no_retry_settings = DedupSettings(lock_retry_max=0, lock_retry_delay_ms=1)
     service = DedupService(cache=cache, repository=repository, settings=no_retry_settings)
 
-    result_a, result_b = await asyncio.gather(service.check(_HASH), service.check(_HASH))
+    result_a, result_b = await asyncio.gather(
+        service.check(_HASH, _FILE_SIZE), service.check(_HASH, _FILE_SIZE)
+    )
 
     tokens = {result_a.lock_token, result_b.lock_token}
     assert None in tokens  # exactly one of the two failed to acquire

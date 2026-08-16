@@ -1,9 +1,9 @@
 # FEAT-007: Observability
 
-Status: Not Started
+Status: Done
 Owner: TBD
 Created: 2026-08-11
-Last Updated: 2026-08-11
+Last Updated: 2026-08-16
 
 Technical Design: [TD-007 - Observability](../technical-designs/TD-007-observability.md)
 
@@ -84,9 +84,16 @@ So that **I can justify infrastructure investments**
 
 #### Acceptance Criteria
 
-- [ ] Schema: `{"timestamp": "ISO8601", "level": "INFO", "message": "...", "request_id": "...", "user_id": "...", "operation": "...", "context": {...}}`
-- [ ] Levels: DEBUG (local only), INFO (success operations), WARN (degradation), ERROR (failures)
-- [ ] All logs include request_id for correlation
+- [ ] Schema: `{"timestamp": "ISO8601", "level": "INFO", "message": "...", "request_id": "...", "user_id": "...", "operation": "...", "context": {...}}` —
+      **Partially met**: `timestamp`/`level`/`request_id` present; the
+      human-readable field is named `event`, not `message` (structlog's
+      positional message and a bound `event=` field can't coexist under
+      distinct keys — see `shared/logging/config.py`'s docstring). `user_id`
+      is never populated — there's no auth/user concept anywhere in this
+      codebase yet. `operation`/`context` only appear on the specific error
+      logs that add them explicitly, not universally.
+- [x] Levels: DEBUG (local only), INFO (success operations), WARN (degradation), ERROR (failures)
+- [x] All logs include request_id for correlation (within a request's or worker job's async context)
 
 ### FR-2: Request ID Propagation
 
@@ -94,10 +101,10 @@ So that **I can justify infrastructure investments**
 
 #### Acceptance Criteria
 
-- [ ] Generated: UUID v4 on FastAPI request entry
-- [ ] Header: `X-Request-ID` returned in all responses
-- [ ] Logged: Included in every log statement
-- [ ] Propagated: Passed to worker jobs, Redis operations, storage calls
+- [x] Generated: UUID v4 on FastAPI request entry
+- [x] Header: `X-Request-ID` returned in all responses
+- [x] Logged: Included in every log statement (via structlog contextvars)
+- [x] Propagated: Passed to worker jobs, Redis operations, storage calls (contextvars propagate automatically within the request's async context; explicitly re-bound at worker job start from the job's `request_id` arg)
 
 ### FR-3: Metrics Logging
 
@@ -105,9 +112,9 @@ So that **I can justify infrastructure investments**
 
 #### Acceptance Criteria
 
-- [ ] Events: `dedup_check` (result, hash, latency), `upload_complete` (size, strategy, duration), `variant_generated` (type, duration)
-- [ ] Queryable: Log aggregation tool extracts metrics via JSON field matching
-- [ ] Example: `{"event": "dedup_check", "result": "hit", "latency_ms": 45, "hash": "abc..."}`
+- [x] Events: `dedup_check` (result, hash, latency), `upload_complete` (size, strategy, duration), `variant_generated` (type, duration)
+- [x] Queryable: Log aggregation tool extracts metrics via JSON field matching
+- [x] Example: `{"event": "dedup_check", "result": "hit", "latency_ms": 45, "hash": "abc..."}`
 
 **Known gap carried over from FEAT-003** (flagged during that feature's
 `review-technical-design` pass, 2026-08-14): `DedupService._find_existing`
@@ -117,13 +124,18 @@ field — `DedupService.check()`'s interface never receives a file size, so
 FEAT-003 couldn't add it without a signature change, and (2) there's no JSON
 log formatter configured anywhere in the app yet, so `extra={...}` currently
 produces separate `LogRecord` attributes, not the literal JSON body FR-3's
-own example shows. When FEAT-007's `structlog` config lands, either thread
-`file_size` through `DedupService.check()`/`_find_existing()` so the event
-carries it, or accept the gap and document why. The DB-unavailable path also
-emits a separate `database_unavailable` event rather than a `dedup_check`
-event with `result: "error"` — worth deciding whether FR-3's "result" field
-should unify hit/miss/error into one event family per this feature's own
-FR-1 schema, or keep error logging on its own event name.
+own example shows.
+
+**Resolved 2026-08-16**: `file_size` WILL be threaded through
+`DedupService.check()`/`_find_existing()` so the `dedup_check` event carries
+it — both `UploadService.upload_small_file()` and
+`UploadService.finalize_large_upload()` already know the size (`len(content)`
+and `storage_metadata.size` respectively) at their `dedup_service.check()`
+call sites, so passing it through is a small signature change. The
+`database_unavailable` event on the DB-unavailable path IS unified into
+`dedup_check` with `result: "error"` — one event family (`dedup_check`) now
+covers hit/miss/error, matching FR-1's schema intent and simplifying FR-3's
+hit-rate metrics query (single event name to filter on).
 
 ### FR-4: Error Tracking
 
@@ -131,10 +143,17 @@ FR-1 schema, or keep error logging on its own event name.
 
 #### Acceptance Criteria
 
-- [ ] Context: user_id, file_id, operation, request_id
-- [ ] Stack trace: Included for all exceptions
-- [ ] Structured: Error type, message, context as JSON fields
-- [ ] Example: `{"level": "ERROR", "error_type": "StorageProviderError", "message": "S3 timeout", "stack_trace": "...", "context": {...}}`
+- [ ] Context: user_id, file_id, operation, request_id — **partially met**:
+      `file_id`/`operation`/`request_id` present on the error logs added by
+      this feature (`storage_upload_failed`, `variant_generation_failed`);
+      `user_id` is never populated (no auth/user concept in this codebase).
+      Also not wired into `MultipartService.finalize()`'s storage calls,
+      which have no try/except to attach error logging to.
+- [x] Stack trace: Included for all exceptions (`exc_info=True` + `format_exc_info` processor, verified renders under an `exception` field)
+- [x] Structured: Error type, message, context as JSON fields
+- [ ] Example: `{"level": "ERROR", "error_type": "StorageProviderError", "message": "S3 timeout", "stack_trace": "...", "context": {...}}` —
+      close but not literal: the exception's own message text isn't a
+      separate field, only embedded in the `exception` traceback string.
 
 ### FR-5: Performance Logging
 
@@ -142,9 +161,13 @@ FR-1 schema, or keep error logging on its own event name.
 
 #### Acceptance Criteria
 
-- [ ] Operations: `upload_duration_ms`, `dedup_check_duration_ms`, `variant_generation_duration_ms`
-- [ ] Logged on operation completion
-- [ ] Includes operation type and outcome (success/failure)
+- [x] Operations: `upload_duration_ms`, `dedup_check_duration_ms`, `variant_generation_duration_ms` (as `duration_ms`/`latency_ms` fields on the `upload_complete`/`dedup_check`/`variant_generated` events)
+- [x] Logged on operation completion
+- [ ] Includes operation type and outcome (success/failure) — **partially met**:
+      `variant_generated` logs `outcome=success|failure`; `upload_complete`
+      only ever logs `outcome="success"` — there's no corresponding
+      failure-outcome emission for uploads (a failed upload never reaches
+      the "complete" event at all currently).
 
 ---
 
@@ -187,7 +210,18 @@ FR-1 schema, or keep error logging on its own event name.
 
 # 8. Open Questions
 
-- [ ] Should we integrate with OpenTelemetry for distributed tracing?
-- [ ] Do we need log sampling (reduce volume for high-traffic operations)?
-- [ ] Should we log sensitive data (filenames, user emails) or sanitize?
-- [ ] How do we handle log retention (rotate after 30 days, archive to S3)?
+- [x] Should we integrate with OpenTelemetry for distributed tracing? —
+      **Resolved 2026-08-16**: No, out of scope — already covered by this
+      feature's own Non-Goals ("Full APM solution... future"). request_id
+      correlation (FR-2) is this phase's tracing mechanism.
+- [ ] Do we need log sampling (reduce volume for high-traffic operations)? —
+      Out of scope for this implementation; revisit if log volume becomes an
+      operational problem.
+- [x] Should we log sensitive data (filenames, user emails) or sanitize? —
+      **Resolved 2026-08-16**: Sanitize — the implementation logs `file_id`
+      (UUID), `storage_key`, and `sha256_hash`, never raw filenames or user
+      emails, matching the pattern already established in `dedup/service.py`
+      and `upload/service.py` before this feature.
+- [ ] How do we handle log retention (rotate after 30 days, archive to S3)? —
+      Out of scope for this implementation; a log aggregation tool /
+      infrastructure concern per this feature's Non-Goals, not application code.
