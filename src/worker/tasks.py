@@ -12,6 +12,7 @@ from typing import Any
 from arq import Retry
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shared.logging.middleware import bind_request_id
 from shared.storage.provider import StorageProvider
 from upload.multipart_service import MultipartCleanupService
 from upload.repository import MultipartSessionRepository
@@ -22,7 +23,11 @@ from variants.service import VariantService
 
 
 async def generate_variants(
-    ctx: dict[str, Any], file_id: str, storage_key: str, mime_type: str
+    ctx: dict[str, Any],
+    file_id: str,
+    storage_key: str,
+    mime_type: str,
+    request_id: str | None = None,
 ) -> None:
     """Generate WebP + thumbnail variants for a newly uploaded file (FR-1 through FR-4).
 
@@ -33,7 +38,13 @@ async def generate_variants(
     Once the configured retries are exhausted, the exception propagates and
     arq marks the job failed, satisfying the success metric's "failed jobs
     logged for manual inspection" rather than retrying forever.
+
+    `request_id` is the originating upload request's id (FEAT-007 FR-2's
+    worker-job propagation AC), re-bound here so this job's logs correlate
+    back to that request.
     """
+    bind_request_id(request_id)
+
     settings: VariantSettings = ctx["variant_settings"]
     storage: StorageProvider = ctx["storage_provider"]
     session_factory: async_sessionmaker[AsyncSession] = ctx["db_session_factory"]

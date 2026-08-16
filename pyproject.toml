@@ -27,6 +27,7 @@ dependencies = [
     "redis>=8.1.0",
     "arq>=0.26.0",
     "pillow>=10.0.0",
+    "structlog>=24.1.0",
 ]
 
 [project.optional-dependencies]

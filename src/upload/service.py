@@ -3,7 +3,7 @@
 """
 
 import asyncio
-import logging
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -12,6 +12,9 @@ from redis.exceptions import RedisError
 
 from dedup.hasher import hash_bytes, hash_stream
 from dedup.service import DedupCheckResult
+from shared.logging.config import setup_logger
+from shared.logging.metrics import log_upload_complete
+from shared.logging.middleware import get_request_id
 from shared.storage.exceptions import StorageError, StorageObjectNotFoundError
 from shared.storage.provider import StorageProvider
 from upload.exceptions import (
@@ -24,7 +27,7 @@ from upload.models import File, UploadSession
 from upload.schemas import FileMetadata, UploadSessionMetadata
 from upload.validator import UploadValidator, generate_storage_key, sanitize_filename
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 _READ_CHUNK_SIZE = 64 * 1024
 _FINALIZE_INSTRUCTIONS = (
@@ -74,7 +77,7 @@ class JobQueueProtocol(Protocol):
 class DedupServiceProtocol(Protocol):
     """Deduplication operations `UploadService` needs from `dedup.service.DedupService`."""
 
-    async def check(self, sha256_hash: str) -> DedupCheckResult:
+    async def check(self, sha256_hash: str, file_size: int) -> DedupCheckResult:
         ...
 
     async def finish(self, sha256_hash: str, storage_key: str, result: DedupCheckResult) -> None:
@@ -115,12 +118,13 @@ class UploadService:
         """Validate, dedup-check, store, and persist a small file (TD-002 §6
         mediated flow; TD-003 §3, §6 dedup check runs before the storage write).
         """
+        started = time.monotonic()
         safe_filename = sanitize_filename(filename)
         content = await self._read_bounded(stream)
         self.validator.validate_for_mediated_upload(safe_filename, len(content), mime_type)
 
         sha256_hash = hash_bytes(content)
-        dedup_result = await self.dedup_service.check(sha256_hash)
+        dedup_result = await self.dedup_service.check(sha256_hash, len(content))
 
         if dedup_result.existing_storage_key is not None:
             # Duplicate content: reuse the existing storage key, skip the
@@ -134,6 +138,13 @@ class UploadService:
                 # FR-4: lock released on failure too, not just success —
                 # `abort()` releases without caching a storage_key that was
                 # never actually written.
+                logger.error(
+                    "storage_upload_failed",
+                    error_type="StorageError",
+                    storage_key=storage_key,
+                    operation="upload_small_file",
+                    exc_info=True,
+                )
                 await self.dedup_service.abort(sha256_hash, dedup_result)
                 raise
 
@@ -159,6 +170,13 @@ class UploadService:
 
         upload_url = await self.storage.generate_presigned_url(
             saved.storage_key, "GET", self.presigned_url_ttl
+        )
+
+        log_upload_complete(
+            file_id=str(saved.file_id),
+            size=saved.size,
+            strategy="mediated",
+            duration_ms=(time.monotonic() - started) * 1000,
         )
 
         return FileMetadata(
@@ -219,6 +237,7 @@ class UploadService:
         the storage-verified value is what gets persisted to `files.etag` —
         not the client-supplied one, since storage is the ground truth.
         """
+        started = time.monotonic()
         session = await self.session_repository.find_active_by_id(upload_id)
         if session is None:
             raise UploadNotFoundError(upload_id)
@@ -243,7 +262,7 @@ class UploadService:
         # NOT delete this object or repoint storage_key (TD-003 §3 resolution
         # 2026-08-14) — this upload keeps its own storage_key.
         sha256_hash = await hash_stream(self.storage.download(session.storage_key))
-        dedup_result = await self.dedup_service.check(sha256_hash)
+        dedup_result = await self.dedup_service.check(sha256_hash, storage_metadata.size)
 
         async def _persist_finalized_file() -> File:
             # Order matters for atomicity: mark_finalized only mutates (see
@@ -275,6 +294,13 @@ class UploadService:
 
         download_url = await self.storage.generate_presigned_url(
             saved.storage_key, "GET", self.presigned_url_ttl
+        )
+
+        log_upload_complete(
+            file_id=str(saved.file_id),
+            size=saved.size,
+            strategy="presigned",
+            duration_ms=(time.monotonic() - started) * 1000,
         )
 
         return FileMetadata(
@@ -319,7 +345,11 @@ class UploadService:
         """
         try:
             await self.job_queue.enqueue_job(
-                _GENERATE_VARIANTS_JOB, str(file.file_id), file.storage_key, file.mime_type
+                _GENERATE_VARIANTS_JOB,
+                str(file.file_id),
+                file.storage_key,
+                file.mime_type,
+                get_request_id(),
             )
         except RedisError:
-            logger.warning("variant_job_enqueue_failed", extra={"file_id": str(file.file_id)})
+            logger.warning("variant_job_enqueue_failed", file_id=str(file.file_id))

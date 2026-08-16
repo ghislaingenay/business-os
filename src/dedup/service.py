@@ -8,7 +8,6 @@ records the outcome).
 """
 
 import asyncio
-import logging
 import time
 import uuid
 from dataclasses import dataclass
@@ -18,8 +17,10 @@ from dedup.exceptions import DedupDatabaseUnavailableError
 from dedup.repository import DedupRepository
 from shared.cache.exceptions import CacheUnavailableError
 from shared.cache.provider import CacheProvider
+from shared.logging.config import setup_logger
+from shared.logging.metrics import log_dedup_check
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -50,8 +51,11 @@ class DedupService:
         self.repository = repository
         self.settings = settings
 
-    async def check(self, sha256_hash: str) -> DedupCheckResult:
+    async def check(self, sha256_hash: str, file_size: int) -> DedupCheckResult:
         """Look up existing content for `sha256_hash` (FR-2, FR-3, FR-4).
+
+        `file_size` is only used for the `dedup_check` metric event (FEAT-007
+        §FR-3) — it plays no role in the lookup itself.
 
         Caller must call `finish()` afterwards — on both a hit and a miss —
         passing whichever `storage_key` ends up being used, so the cache gets
@@ -61,7 +65,7 @@ class DedupService:
             return DedupCheckResult(existing_storage_key=None, lock_token=None)
 
         lock_token = await self._acquire_lock(sha256_hash)
-        existing_storage_key = await self._find_existing(sha256_hash)
+        existing_storage_key = await self._find_existing(sha256_hash, file_size)
         return DedupCheckResult(existing_storage_key=existing_storage_key, lock_token=lock_token)
 
     async def finish(self, sha256_hash: str, storage_key: str, result: DedupCheckResult) -> None:
@@ -94,22 +98,27 @@ class DedupService:
         if result.lock_token is not None:
             await self._release_lock(sha256_hash, result.lock_token)
 
-    async def _find_existing(self, sha256_hash: str) -> str | None:
+    async def _find_existing(self, sha256_hash: str, file_size: int) -> str | None:
         cache_key = self._cache_key(sha256_hash)
+        started = time.monotonic()
 
         try:
             cached_storage_key = await self.cache.get(cache_key)
         except CacheUnavailableError:
-            logger.warning("dedup_cache_unavailable", extra={"hash": sha256_hash})
+            logger.warning("dedup_cache_unavailable", hash=sha256_hash)
             cached_storage_key = None
 
         if cached_storage_key is not None:
             try:
                 await self.cache.expire(cache_key, self.settings.cache_ttl_seconds)
             except CacheUnavailableError:
-                logger.warning("dedup_cache_unavailable", extra={"hash": sha256_hash})
-            logger.info(
-                "dedup_check", extra={"result": "hit", "hash": sha256_hash, "source": "cache"}
+                logger.warning("dedup_cache_unavailable", hash=sha256_hash)
+            log_dedup_check(
+                result="hit",
+                sha256_hash=sha256_hash,
+                latency_ms=(time.monotonic() - started) * 1000,
+                source="cache",
+                file_size=file_size,
             )
             return cached_storage_key
 
@@ -120,17 +129,36 @@ class DedupService:
         try:
             storage_key = await self.repository.find_storage_key_by_hash(sha256_hash)
         except DedupDatabaseUnavailableError:
-            logger.error("database_unavailable", extra={"hash": sha256_hash})
+            # Unified into the `dedup_check` event family with `result="error"`
+            # (FEAT-007 §FR-3, resolved 2026-08-16) rather than a separate
+            # `database_unavailable` event.
+            log_dedup_check(
+                result="error",
+                sha256_hash=sha256_hash,
+                latency_ms=(time.monotonic() - started) * 1000,
+                source="database",
+                file_size=file_size,
+            )
             raise
 
         if storage_key is not None:
             await self._populate_cache(sha256_hash, storage_key)
-            logger.info(
-                "dedup_check", extra={"result": "hit", "hash": sha256_hash, "source": "database"}
+            log_dedup_check(
+                result="hit",
+                sha256_hash=sha256_hash,
+                latency_ms=(time.monotonic() - started) * 1000,
+                source="database",
+                file_size=file_size,
             )
             return storage_key
 
-        logger.info("dedup_check", extra={"result": "miss", "hash": sha256_hash})
+        log_dedup_check(
+            result="miss",
+            sha256_hash=sha256_hash,
+            latency_ms=(time.monotonic() - started) * 1000,
+            source=None,
+            file_size=file_size,
+        )
         return None
 
     async def _populate_cache(self, sha256_hash: str, storage_key: str) -> None:
@@ -139,7 +167,7 @@ class DedupService:
                 self._cache_key(sha256_hash), storage_key, self.settings.cache_ttl_seconds
             )
         except CacheUnavailableError:
-            logger.warning("cache_write_failed", extra={"hash": sha256_hash})
+            logger.warning("cache_write_failed", hash=sha256_hash)
 
     async def _acquire_lock(self, sha256_hash: str) -> str | None:
         # Fixed-delay retry loop, deliberately not extracted into a generic
@@ -157,21 +185,22 @@ class DedupService:
             except CacheUnavailableError:
                 # Redis itself is down, not just contended — no point retrying
                 # a lock we can't reach. Fail-open immediately (FR-4).
-                logger.warning("dedup_cache_unavailable", extra={"hash": sha256_hash})
+                logger.warning("dedup_cache_unavailable", hash=sha256_hash)
                 return None
 
             if acquired:
                 wait_time_ms = (time.monotonic() - started) * 1000
                 logger.info(
                     "dedup_lock_acquired",
-                    extra={"hash": sha256_hash, "dedup_lock_wait_time_ms": wait_time_ms},
+                    hash=sha256_hash,
+                    dedup_lock_wait_time_ms=wait_time_ms,
                 )
                 return token
 
             if attempt < self.settings.lock_retry_max:
                 await asyncio.sleep(self.settings.lock_retry_delay_ms / 1000)
 
-        logger.warning("dedup_lock_timeout", extra={"hash": sha256_hash})
+        logger.warning("dedup_lock_timeout", hash=sha256_hash)
         return None
 
     async def _release_lock(self, sha256_hash: str, lock_token: str) -> None:
@@ -180,7 +209,7 @@ class DedupService:
         except CacheUnavailableError:
             # Nothing to recover here — the lock's own TTL (`lock_ttl_seconds`)
             # auto-expires it, which is what makes fail-open safe.
-            logger.warning("dedup_cache_unavailable", extra={"hash": sha256_hash})
+            logger.warning("dedup_cache_unavailable", hash=sha256_hash)
 
     @staticmethod
     def _cache_key(sha256_hash: str) -> str:

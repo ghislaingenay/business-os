@@ -12,7 +12,7 @@ This directory contains feature specifications for the File Storage Service.
 | FEAT-004 | [Async Variant Generation](FEAT-004-async-variant-generation.md)         | Doing       | [TD-004](../technical-designs/TD-004-async-variant-generation.md)     |
 | FEAT-005 | [Multipart Upload Support](FEAT-005-multipart-upload-support.md)         | Doing       | [TD-005](../technical-designs/TD-005-multipart-upload-support.md)     |
 | FEAT-006 | [Rate Limiting](FEAT-006-rate-limiting.md)                               | Not Started | [TD-006](../technical-designs/TD-006-rate-limiting.md)                |
-| FEAT-007 | [Observability](FEAT-007-observability.md)                               | Not Started | [TD-007](../technical-designs/TD-007-observability.md)                |
+| FEAT-007 | [Observability](FEAT-007-observability.md)                               | Done        | [TD-007](../technical-designs/TD-007-observability.md)                |
 
 ## Status Legend
 

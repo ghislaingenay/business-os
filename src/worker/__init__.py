@@ -17,6 +17,10 @@ from worker.tasks import cleanup_abandoned_multipart_sessions, generate_variants
 
 
 async def startup(ctx: dict[str, Any]) -> None:
+    # Same eager-init note as main.py's lifespan: configure structlog before
+    # anything else so subsequent setup can log through it.
+    container.logging_configured()
+
     # Per-job dependencies are built from these in `worker.tasks` rather than
     # stored as already-connected clients here, since `max_jobs` concurrent
     # jobs share this one `ctx` dict and a `AsyncSession` isn't safe to share

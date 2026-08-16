@@ -164,7 +164,7 @@ class FakeDedupService:
         self.finish_calls: list[tuple[str, str]] = []
         self.abort_calls: list[str] = []
 
-    async def check(self, sha256_hash: str) -> DedupCheckResult:
+    async def check(self, sha256_hash: str, _file_size: int) -> DedupCheckResult:
         self.check_calls.append(sha256_hash)
         return DedupCheckResult(
             existing_storage_key=self.existing_storage_key, lock_token="fake-lock-token"
