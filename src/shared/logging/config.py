@@ -14,8 +14,10 @@ import logging
 from typing import Literal, cast
 
 import structlog
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ALLOWED_LEVELS = ("DEBUG", "INFO", "WARNING", "WARN", "ERROR", "CRITICAL")
 
 
 class LoggingSettings(BaseSettings):
@@ -30,6 +32,15 @@ class LoggingSettings(BaseSettings):
     level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     format: Literal["json", "console"] = Field(default="json", validation_alias="LOG_FORMAT")
 
+    @field_validator("level")
+    @classmethod
+    def _validate_level(cls, value: str) -> str:
+        level = value.upper()
+        if level not in _ALLOWED_LEVELS:
+            raise ValueError(
+                f"Invalid LOG_LEVEL '{value}'. Expected one of: {', '.join(_ALLOWED_LEVELS)}"
+            )
+        return level
 
 def _uppercase_level(
     _logger: object, _method_name: str, event_dict: structlog.types.EventDict
