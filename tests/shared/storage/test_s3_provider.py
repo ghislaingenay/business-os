@@ -11,6 +11,7 @@ from shared.storage.exceptions import (
     StorageObjectNotFoundError,
     StoragePermissionError,
 )
+from shared.storage.provider import CompletedPart
 from shared.storage.s3_provider import S3StorageProvider
 
 
@@ -163,3 +164,93 @@ def test_accepts_custom_endpoint_url() -> None:
     provider = S3StorageProvider(bucket=_BUCKET, region=_REGION, endpoint_url=endpoint)
 
     assert provider._client.meta.endpoint_url == endpoint
+
+
+async def test_create_multipart_upload_returns_upload_id(s3_provider: S3StorageProvider) -> None:
+    upload_id = await s3_provider.create_multipart_upload(_KEY)
+
+    assert upload_id
+
+
+async def test_generate_part_upload_url(s3_provider: S3StorageProvider) -> None:
+    upload_id = await s3_provider.create_multipart_upload(_KEY)
+
+    url = await s3_provider.generate_part_upload_url(_KEY, upload_id, 1, ttl=60)
+
+    assert url.startswith("http")
+    assert _BUCKET in url
+    assert upload_id in url
+
+
+async def test_list_parts_returns_uploaded_parts(s3_provider: S3StorageProvider) -> None:
+    upload_id = await s3_provider.create_multipart_upload(_KEY)
+    # Simulate the client's direct PUT to a part URL — the presigned URL
+    # itself targets the same underlying object the raw client call does,
+    # so uploading via the boto3 client is equivalent for test purposes
+    # (mirrors how `tests/upload/test_router.py`'s end-to-end test simulates
+    # a client PUT via the provider rather than an actual HTTP request).
+    part_response = s3_provider._client.upload_part(
+        Bucket=_BUCKET, Key=_KEY, UploadId=upload_id, PartNumber=1, Body=b"x" * 1024
+    )
+
+    parts = await s3_provider.list_parts(_KEY, upload_id)
+
+    assert len(parts) == 1
+    assert parts[0].part_number == 1
+    assert parts[0].etag == part_response["ETag"].strip('"')
+    assert parts[0].size == 1024
+
+
+async def test_list_parts_returns_empty_before_any_part_uploaded(
+    s3_provider: S3StorageProvider,
+) -> None:
+    upload_id = await s3_provider.create_multipart_upload(_KEY)
+
+    parts = await s3_provider.list_parts(_KEY, upload_id)
+
+    assert parts == []
+
+
+async def test_complete_multipart_upload_assembles_parts(s3_provider: S3StorageProvider) -> None:
+    upload_id = await s3_provider.create_multipart_upload(_KEY)
+    part_response = s3_provider._client.upload_part(
+        Bucket=_BUCKET, Key=_KEY, UploadId=upload_id, PartNumber=1, Body=b"x" * 1024
+    )
+
+    returned_key = await s3_provider.complete_multipart_upload(
+        _KEY,
+        upload_id,
+        [CompletedPart(part_number=1, etag=part_response["ETag"].strip('"'))],
+    )
+
+    assert returned_key == _KEY
+    metadata = await s3_provider.head(_KEY)
+    assert metadata.size == 1024
+
+
+async def test_abort_multipart_upload_discards_parts(s3_provider: S3StorageProvider) -> None:
+    upload_id = await s3_provider.create_multipart_upload(_KEY)
+    s3_provider._client.upload_part(
+        Bucket=_BUCKET, Key=_KEY, UploadId=upload_id, PartNumber=1, Body=b"x" * 1024
+    )
+
+    await s3_provider.abort_multipart_upload(_KEY, upload_id)
+
+    with pytest.raises(StorageError):
+        await s3_provider.list_parts(_KEY, upload_id)
+
+
+async def test_create_multipart_upload_wraps_client_error(
+    s3_provider: S3StorageProvider,
+) -> None:
+    with (
+        patch.object(
+            s3_provider._client,
+            "create_multipart_upload",
+            side_effect=_client_error("InternalError"),
+        ),
+        pytest.raises(StorageError) as exc_info,
+    ):
+        await s3_provider.create_multipart_upload(_KEY)
+
+    assert not isinstance(exc_info.value, StoragePermissionError)

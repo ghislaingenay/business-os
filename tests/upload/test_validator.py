@@ -4,12 +4,14 @@ from upload.config import UploadSettings
 from upload.exceptions import (
     FileTooLargeError,
     FileTooSmallError,
+    FileTooSmallForMultipartError,
     InvalidFileTypeError,
     MimeMismatchError,
 )
-from upload.validator import UploadValidator, sanitize_filename
+from upload.validator import UploadValidator, generate_storage_key, sanitize_filename
 
 _MAX_SMALL_FILE_SIZE = 2_097_152
+_MIN_MULTIPART_SIZE = 104_857_600
 
 
 @pytest.fixture()
@@ -47,6 +49,31 @@ def test_presigned_upload_rejects_file_at_or_under_threshold(
 
     assert exc_info.value.size == _MAX_SMALL_FILE_SIZE
     assert exc_info.value.max_size == _MAX_SMALL_FILE_SIZE
+
+
+def test_multipart_upload_accepts_file_over_threshold(validator: UploadValidator) -> None:
+    validator.validate_for_multipart_upload(
+        "video.mp4", _MIN_MULTIPART_SIZE + 1, "video/mp4", _MIN_MULTIPART_SIZE
+    )
+
+
+def test_multipart_upload_rejects_file_at_or_under_threshold(
+    validator: UploadValidator,
+) -> None:
+    with pytest.raises(FileTooSmallForMultipartError) as exc_info:
+        validator.validate_for_multipart_upload(
+            "video.mp4", _MIN_MULTIPART_SIZE, "video/mp4", _MIN_MULTIPART_SIZE
+        )
+
+    assert exc_info.value.size == _MIN_MULTIPART_SIZE
+    assert exc_info.value.min_size == _MIN_MULTIPART_SIZE
+
+
+def test_generate_storage_key_uses_originals_prefix_and_extension() -> None:
+    key = generate_storage_key("video.mp4")
+
+    assert key.startswith("originals/")
+    assert key.endswith(".mp4")
 
 
 def test_rejects_file_type_not_in_allowlist(validator: UploadValidator) -> None:

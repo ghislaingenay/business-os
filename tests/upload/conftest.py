@@ -9,7 +9,8 @@ from moto import mock_aws
 from dedup.service import DedupCheckResult
 from shared.storage.s3_provider import S3StorageProvider
 from upload.config import UploadSettings
-from upload.models import File, UploadSession
+from upload.models import File, MultipartSession, UploadSession
+from upload.multipart_config import MultipartSettings
 
 _BUCKET = "test-uploads"
 _REGION = "us-east-1"
@@ -98,6 +99,56 @@ def upload_settings() -> UploadSettings:
         presigned_url_ttl=900,
         allowed_file_types=("image/jpeg", "image/png", "video/mp4"),
     )
+
+
+@pytest.fixture()
+def multipart_settings() -> MultipartSettings:
+    return MultipartSettings(
+        part_size=10_485_760,
+        session_ttl_seconds=86_400,
+        presigned_url_ttl_seconds=900,
+        min_multipart_size=104_857_600,
+    )
+
+
+class FakeMultipartSessionRepository:
+    """In-memory `MultipartSessionRepositoryProtocol` (see
+    `upload.multipart_service`) for tests without a real DB. Mirrors
+    `FakeUploadSessionRepository`'s rationale.
+    """
+
+    def __init__(self) -> None:
+        self.saved: list[MultipartSession] = []
+        self.deleted: list[MultipartSession] = []
+
+    async def save(self, multipart_session: MultipartSession) -> MultipartSession:
+        multipart_session.upload_id = uuid.uuid4()
+        multipart_session.created_at = datetime.now(UTC)
+        self.saved.append(multipart_session)
+        return multipart_session
+
+    async def find_active_by_id(self, upload_id: uuid.UUID) -> MultipartSession | None:
+        for session in self.saved:
+            if session.upload_id == upload_id and not session.finalized:
+                return session
+        return None
+
+    async def mark_finalized(self, multipart_session: MultipartSession) -> None:
+        multipart_session.finalized = True
+
+    async def find_expired_unfinalized(self, now: datetime) -> list[MultipartSession]:
+        return [
+            session for session in self.saved if not session.finalized and session.expires_at < now
+        ]
+
+    async def delete(self, multipart_session: MultipartSession) -> None:
+        self.saved.remove(multipart_session)
+        self.deleted.append(multipart_session)
+
+
+@pytest.fixture()
+def fake_multipart_session_repository() -> FakeMultipartSessionRepository:
+    return FakeMultipartSessionRepository()
 
 
 class FakeDedupService:

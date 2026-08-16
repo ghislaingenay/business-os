@@ -10,6 +10,7 @@ from shared.queue.provider import create_job_queue
 from shared.storage.config import StorageSettings
 from shared.storage.factory import StorageProviderFactory
 from upload.config import UploadSettings
+from upload.multipart_config import MultipartSettings
 from variants.config import VariantSettings
 
 
@@ -42,6 +43,8 @@ class Container(containers.DeclarativeContainer):
     db_session_factory = providers.Singleton(create_session_factory, engine=db_engine)
 
     upload_settings = providers.Singleton(UploadSettings)
+
+    multipart_settings = providers.Singleton(MultipartSettings)
 
     dedup_settings = providers.Singleton(DedupSettings)
 

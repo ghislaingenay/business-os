@@ -16,6 +16,25 @@ class StorageObjectMetadata:
     content_type: str | None = None
 
 
+@dataclass(frozen=True)
+class StoragePart:
+    """A part already uploaded to a multipart session, as reported by the
+    provider (TD-005 §5's `list_parts`)."""
+
+    part_number: int
+    etag: str
+    size: int
+
+
+@dataclass(frozen=True)
+class CompletedPart:
+    """A part number/ETag pair the client supplies to complete a multipart
+    upload (TD-005 §5's `complete_multipart_upload`)."""
+
+    part_number: int
+    etag: str
+
+
 class StorageProvider(ABC):
     """Common operations every storage backend (S3, GCS, R2, MinIO) must support.
 
@@ -54,3 +73,27 @@ class StorageProvider(ABC):
         self, key: str, method: Literal["GET", "PUT"], ttl: int
     ) -> str:
         """Generate a time-limited presigned URL for direct client access."""
+
+    @abstractmethod
+    async def create_multipart_upload(self, key: str) -> str:
+        """Start a multipart upload and return the provider's upload id."""
+
+    @abstractmethod
+    async def generate_part_upload_url(
+        self, key: str, upload_id: str, part_number: int, ttl: int
+    ) -> str:
+        """Generate a time-limited presigned PUT URL for a single part."""
+
+    @abstractmethod
+    async def list_parts(self, key: str, upload_id: str) -> list[StoragePart]:
+        """List parts the provider has already received for `upload_id`."""
+
+    @abstractmethod
+    async def complete_multipart_upload(
+        self, key: str, upload_id: str, parts: list[CompletedPart]
+    ) -> str:
+        """Assemble the uploaded parts into a single object, returning its key."""
+
+    @abstractmethod
+    async def abort_multipart_upload(self, key: str, upload_id: str) -> None:
+        """Abort a multipart upload, discarding any parts already received."""

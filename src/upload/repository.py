@@ -1,11 +1,14 @@
-"""Persistence access for the `files` and `upload_sessions` tables (TD-002 §4)."""
+"""Persistence access for the `files`, `upload_sessions`, and
+`multipart_sessions` tables (TD-002 §4, TD-005 §3).
+"""
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from upload.models import File, UploadSession
+from upload.models import File, MultipartSession, UploadSession
 
 
 class FileRepository:
@@ -63,3 +66,51 @@ class UploadSessionRepository:
         so a client retry could create a duplicate `File` for the same upload.
         """
         upload_session.finalized = True
+
+
+class MultipartSessionRepository:
+    """`MultipartSessionRepository` (see `upload.multipart_service`) backed by
+    SQLAlchemy's async session.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def save(self, multipart_session: MultipartSession) -> MultipartSession:
+        self.session.add(multipart_session)
+        await self.session.commit()
+        await self.session.refresh(multipart_session)
+        return multipart_session
+
+    async def find_active_by_id(self, upload_id: uuid.UUID) -> MultipartSession | None:
+        """Look up a session by id, excluding already-finalized ones — mirrors
+        `UploadSessionRepository.find_active_by_id`'s rationale.
+        """
+        result = await self.session.execute(
+            select(MultipartSession).where(
+                MultipartSession.upload_id == upload_id,
+                MultipartSession.finalized.is_(False),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def mark_finalized(self, multipart_session: MultipartSession) -> None:
+        """Mark the session finalized in-memory — deliberately does NOT commit,
+        matching `UploadSessionRepository.mark_finalized`'s same-transaction
+        rationale with the `File` row it's persisted alongside.
+        """
+        multipart_session.finalized = True
+
+    async def find_expired_unfinalized(self, now: datetime) -> list[MultipartSession]:
+        """Sessions past their TTL that were never finalized (FR-5 cleanup job)."""
+        result = await self.session.execute(
+            select(MultipartSession).where(
+                MultipartSession.expires_at < now,
+                MultipartSession.finalized.is_(False),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def delete(self, multipart_session: MultipartSession) -> None:
+        await self.session.delete(multipart_session)
+        await self.session.commit()
