@@ -17,8 +17,8 @@ from worker.tasks import cleanup_abandoned_multipart_sessions, generate_variants
 
 
 async def startup(ctx: dict[str, Any]) -> None:
-    # Same eager-init note as main.py's lifespan: configure structlog before
-    # anything else so subsequent setup can log through it.
+    # Eager-init note as main.py's lifespan: configure structlog early in
+    # worker startup so subsequent setup steps can log through it.
     container.logging_configured()
 
     # Per-job dependencies are built from these in `worker.tasks` rather than
