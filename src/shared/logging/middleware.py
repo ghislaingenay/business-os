@@ -3,27 +3,41 @@
 import uuid
 
 import structlog
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 REQUEST_ID_HEADER = "X-Request-ID"
 
 
-class RequestIDMiddleware(BaseHTTPMiddleware):
+class RequestIDMiddleware:
     """Generates a UUID v4 `request_id` per request, binds it to structlog's
     contextvars so every log statement made within this request's async
     context includes it (FR-2's "Logged"), and returns it in the
     `X-Request-ID` response header (FR-2's "Header").
     """
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
         request_id = str(uuid.uuid4())
         bind_request_id(request_id)
 
-        response = await call_next(request)
-        response.headers[REQUEST_ID_HEADER] = request_id
-        return response
+        async def send_with_request_id(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                header_key = REQUEST_ID_HEADER.lower().encode()
+                headers = [(k, v) for (k, v) in message.get("headers", []) if k.lower() != header_key]
+                headers.append((header_key, request_id.encode()))
+                message["headers"] = headers
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_request_id)
+        finally:
+            bind_request_id(None)
 
 
 def get_request_id() -> str | None:
