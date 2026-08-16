@@ -232,14 +232,20 @@ class MultipartService:
         if session.expires_at < datetime.now(UTC):
             raise MultipartSessionExpiredError(upload_id, session.expires_at)
 
-        provided_numbers = sorted(part.part_number for part in parts)
+        for part in parts:
+            if not 1 <= part.part_number <= session.total_parts:
+                raise InvalidPartNumberError(part.part_number, session.total_parts)
+
+        parts_by_number = {part.part_number: part.etag for part in parts}
         expected_numbers = list(range(1, session.total_parts + 1))
-        if provided_numbers != expected_numbers:
-            missing = sorted(set(expected_numbers) - set(provided_numbers))
+        missing = sorted(set(expected_numbers) - set(parts_by_number))
+
+        if missing:
             raise IncompletePartsError(upload_id, missing)
 
         completed_parts = [
-            CompletedPart(part_number=part.part_number, etag=part.etag) for part in parts
+            CompletedPart(part_number=part.part_number, etag=parts_by_number[part.part_number])
+            for part in parts
         ]
         await self.storage.complete_multipart_upload(
             session.storage_key, session.storage_upload_id, completed_parts
